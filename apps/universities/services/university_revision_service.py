@@ -3,8 +3,17 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 
-from apps.universities.models import University, UniversityRevision
 from django.utils import timezone
+from apps.rbac.services.role_service import RoleService
+
+from django.db.models import F
+
+from apps.universities.models import (
+    University,
+    UniversityRevision,
+    UniversityTranslation,
+    UniversityTranslationRevision,
+)
 
 
 User = get_user_model()
@@ -15,17 +24,72 @@ class UniversityRevisionService:
 
     @staticmethod
     def _ensure_permission(actor: User, permission: str) -> None:
-        if not actor or not actor.is_authenticated:
+        if (
+                actor is None
+                or not actor.is_authenticated
+                or not actor.is_active
+        ):
             raise PermissionDenied(
-                "Ushbu amal uchun autentifikatsiya talab qilinadi."
+                "Bu amalni bajarish uchun faol foydalanuvchi "
+                "bo'lishingiz kerak."
             )
 
-        if not actor.is_superuser and not actor.has_perm(
-                f"universities.{permission}"
-        ):
+        if actor.is_superuser:
+            return
+
+        actor_permissions = RoleService._get_actor_role_permissions(actor)
+
+        if f"universities.{permission}" not in actor_permissions:
             raise PermissionDenied(
                 "Ushbu amalni bajarish uchun ruxsatingiz mavjud emas."
             )
+
+    @staticmethod
+    def _get_revision_for_update(revision_id) -> UniversityRevision:
+        """University va revisionni yagona lock tartibida oladi."""
+
+        university_id = (
+            UniversityRevision.objects
+            .filter(pk=revision_id)
+            .values_list("university_id", flat=True)
+            .first()
+        )
+
+        if university_id is None:
+            raise ValidationError("Universitet revisioni topilmadi.")
+
+        university = (
+            University.objects
+            .select_for_update()
+            .filter(pk=university_id)
+            .first()
+        )
+
+        if university is None:
+            raise ValidationError("Universitet topilmadi.")
+
+        if university.status == University.Status.ARCHIVED:
+            raise ValidationError(
+                "Arxivlangan universitet revisionlarini boshqarish mumkin emas."
+            )
+
+        revision = (
+            UniversityRevision.objects
+            .select_for_update()
+            .filter(
+                pk=revision_id,
+                university_id=university.pk,
+            )
+            .first()
+        )
+
+        if revision is None:
+            raise ValidationError("Universitet revisioni topilmadi.")
+
+        revision.university = university
+
+        return revision
+
 
     @staticmethod
     @transaction.atomic
@@ -62,6 +126,11 @@ class UniversityRevisionService:
         if university is None:
             raise ValidationError("Universitet topilmadi.")
 
+        if university.status == University.Status.ARCHIVED:
+            raise ValidationError(
+                "Arxivlangan universitet uchun yangi revision yaratish mumkin emas."
+            )
+
         last_revision_number = (
             UniversityRevision.objects
             .filter(university=university)
@@ -96,8 +165,8 @@ class UniversityRevisionService:
         *,
         actor: User,
         revision_id,
-        city: str,
-        country: str,
+        city: str | None = None,
+        country: str | None = None,
     ) -> UniversityRevision:
         """Faqat DRAFT holatidagi revisionni tahrirlaydi."""
 
@@ -115,15 +184,9 @@ class UniversityRevisionService:
         if not country:
             raise ValidationError({"country": "Mamlakat nomi kiritilishi shart."})
 
-        revision = (
-            UniversityRevision.objects
-            .select_for_update()
-            .filter(pk=revision_id)
-            .first()
+        revision = UniversityRevisionService._get_revision_for_update(
+            revision_id
         )
-
-        if revision is None:
-            raise ValidationError("Universitet revisioni topilmadi.")
 
         if revision.status != UniversityRevision.Status.DRAFT:
             raise ValidationError(
@@ -152,15 +215,9 @@ class UniversityRevisionService:
             "submit_review_university",
         )
 
-        revision = (
-            UniversityRevision.objects
-            .select_for_update()
-            .filter(pk=revision_id)
-            .first()
+        revision = UniversityRevisionService._get_revision_for_update(
+            revision_id
         )
-
-        if revision is None:
-            raise ValidationError("Universitet revisioni topilmadi.")
 
         if revision.status != UniversityRevision.Status.DRAFT:
             raise ValidationError(
@@ -192,15 +249,9 @@ class UniversityRevisionService:
             "approve_university",
         )
 
-        revision = (
-            UniversityRevision.objects
-            .select_for_update()
-            .filter(pk=revision_id)
-            .first()
+        revision = UniversityRevisionService._get_revision_for_update(
+            revision_id
         )
-
-        if revision is None:
-            raise ValidationError("Universitet revisioni topilmadi.")
 
         if revision.status != UniversityRevision.Status.REVIEW:
             raise ValidationError(
@@ -243,15 +294,9 @@ class UniversityRevisionService:
                 "reason": "Rad etish sababi kiritilishi shart."
             })
 
-        revision = (
-            UniversityRevision.objects
-            .select_for_update()
-            .filter(pk=revision_id)
-            .first()
+        revision = UniversityRevisionService._get_revision_for_update(
+            revision_id
         )
-
-        if revision is None:
-            raise ValidationError("Universitet revisioni topilmadi.")
 
         if revision.status != UniversityRevision.Status.REVIEW:
             raise ValidationError(
@@ -282,12 +327,13 @@ class UniversityRevisionService:
             actor: User,
             revision_id,
     ) -> UniversityRevision:
+        """Tasdiqlangan universitet revisionini atomik nashr qiladi."""
+
         UniversityRevisionService._ensure_permission(
             actor,
             "publish_university",
         )
 
-        # Revision qaysi universitetga tegishli ekanini aniqlaymiz.
         university_id = (
             UniversityRevision.objects
             .filter(pk=revision_id)
@@ -298,7 +344,6 @@ class UniversityRevisionService:
         if university_id is None:
             raise ValidationError("Universitet revisioni topilmadi.")
 
-        # Bir universitetga tegishli operatsiyalarni ketma-ket bajarish uchun.
         university = (
             University.objects
             .select_for_update()
@@ -309,7 +354,6 @@ class UniversityRevisionService:
         if university is None:
             raise ValidationError("Universitet topilmadi.")
 
-        # Revisionni ham bloklaymiz.
         revision = (
             UniversityRevision.objects
             .select_for_update()
@@ -323,26 +367,63 @@ class UniversityRevisionService:
         if revision is None:
             raise ValidationError("Universitet revisioni topilmadi.")
 
+        if university.status == University.Status.ARCHIVED:
+            raise ValidationError(
+                "Arxivlangan universitetni nashr qilish mumkin emas."
+            )
+
         if revision.status != UniversityRevision.Status.REVIEW:
             raise ValidationError(
                 "Faqat REVIEW holatidagi revisionni nashr qilish mumkin."
             )
 
-        if revision.approved_by is None or revision.approved_at is None:
+        if revision.approved_by_id is None or revision.approved_at is None:
             raise ValidationError(
                 "Revision nashr qilishdan oldin tasdiqlanishi kerak."
             )
 
-        # Avvalgi nashr qilingan revisionni arxivlaymiz.
-        previous_revision = university.published_revision
+        # Kamida bitta published Uzbek tarjimasi bo'lishi shart.
+        has_published_uzbek_translation = (
+            UniversityTranslation.objects
+            .filter(
+                university_id=university.pk,
+                language_code="uz",
+                published_revision__isnull=False,
+                published_revision__status=(
+                    UniversityTranslationRevision.Status.PUBLISHED
+                ),
+                published_revision__translation_id=F("pk"),
+            )
+            .exists()
+        )
 
-        if previous_revision and previous_revision.pk != revision.pk:
-            previous_revision.status = UniversityRevision.Status.ARCHIVED
-            previous_revision.save(
-                update_fields=["status", "updated_at"]
+        if not has_published_uzbek_translation:
+            raise ValidationError(
+                "Universitetni nashr qilish uchun "
+                "UZ tilidagi published tarjima mavjud bo'lishi shart."
             )
 
-        # Yangi revisionni nashr qilamiz.
+        # Avvalgi published revisionni tekshirish va arxivlash.
+        previous_revision = university.published_revision
+
+        if previous_revision:
+            if previous_revision.university_id != university.pk:
+                raise ValidationError(
+                    "Universitetning faol revision bog'lanishi noto'g'ri."
+                )
+
+            if previous_revision.pk != revision.pk:
+                if previous_revision.status != UniversityRevision.Status.PUBLISHED:
+                    raise ValidationError(
+                        "Avvalgi faol revision PUBLISHED holatida emas."
+                    )
+
+                previous_revision.status = UniversityRevision.Status.ARCHIVED
+                previous_revision.save(
+                    update_fields=["status", "updated_at"]
+                )
+
+        # Yangi revisionni nashr qilish.
         revision.status = UniversityRevision.Status.PUBLISHED
         revision.published_at = timezone.now()
         revision.save(
@@ -353,12 +434,15 @@ class UniversityRevisionService:
             ]
         )
 
-        # Universitetning faol revisionini yangilaymiz.
+        # Universitetning global holati va faol revisionini yangilash.
         university.published_revision = revision
+        university.status = University.Status.PUBLISHED
         university.updated_by = actor
+
         university.save(
             update_fields=[
                 "published_revision",
+                "status",
                 "updated_by",
                 "updated_at",
             ]

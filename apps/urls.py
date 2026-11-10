@@ -7,6 +7,6 @@ urlpatterns = [
     path("admin/", include("apps.users.api.urls")),
 
     # Public API
-    # path("public/", include("apps.universities.api.urls")),
+    path("", include("apps.universities.api.urls")),
     # path("public/", include("apps.programs.api.urls")),
 ]

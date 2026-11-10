@@ -2,12 +2,11 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from apps.rbac.services.role_service import RoleService
 
 from apps.universities.models import (
     University,
     UniversityRevision,
-    UniversityTranslation,
-    UniversityTranslationRevision
 )
 
 User = get_user_model()
@@ -18,18 +17,26 @@ class UniversityService:
 
     @staticmethod
     def _ensure_authenticated(actor: User) -> None:
-        if not actor or not actor.is_authenticated:
+        if (
+                actor is None
+                or not actor.is_authenticated
+                or not actor.is_active
+        ):
             raise PermissionDenied(
-                "Ushbu amal uchun autentifikatsiya talab qilinadi."
+                "Bu amalni bajarish uchun faol foydalanuvchi "
+                "bo'lishingiz kerak."
             )
 
     @staticmethod
     def _ensure_permission(actor: User, permission: str) -> None:
         UniversityService._ensure_authenticated(actor)
 
-        if not actor.is_superuser and not actor.has_perm(
-                f"universities.{permission}"
-        ):
+        if actor.is_superuser:
+            return
+
+        actor_permissions = RoleService._get_actor_role_permissions(actor)
+
+        if f"universities.{permission}" not in actor_permissions:
             raise PermissionDenied(
                 "Ushbu amalni bajarish uchun ruxsatingiz mavjud emas."
             )
@@ -76,17 +83,8 @@ class UniversityService:
 
         return university
 
-
     ALLOWED_STATUS_TRANSITIONS = {
-        University.Status.DRAFT: {
-            University.Status.REVIEW,
-        },
-        University.Status.REVIEW: {
-            University.Status.DRAFT,
-            University.Status.PUBLISHED,
-        },
         University.Status.PUBLISHED: {
-            University.Status.DRAFT,
             University.Status.ARCHIVED,
         },
         University.Status.ARCHIVED: {
@@ -94,25 +92,16 @@ class UniversityService:
         },
     }
 
-
     STATUS_TRANSITION_PERMISSIONS = {
-        (University.Status.DRAFT, University.Status.REVIEW):
-            "submit_review_university",
+        (
+            University.Status.PUBLISHED,
+            University.Status.ARCHIVED,
+        ): "change_university",
 
-        (University.Status.REVIEW, University.Status.DRAFT):
-            "reject_university",
-
-        (University.Status.REVIEW, University.Status.PUBLISHED):
-            "publish_university",
-
-        (University.Status.PUBLISHED, University.Status.DRAFT):
-            "change_university",
-
-        (University.Status.PUBLISHED, University.Status.ARCHIVED):
-            "change_university",
-
-        (University.Status.ARCHIVED, University.Status.DRAFT):
-            "change_university",
+        (
+            University.Status.ARCHIVED,
+            University.Status.DRAFT,
+        ): "change_university",
     }
 
 
@@ -179,38 +168,6 @@ class UniversityService:
             actor,
             required_permission,
         )
-
-
-        if new_status == University.Status.PUBLISHED:
-            if university.published_revision_id is None:
-                raise ValidationError(
-                    "Universitetning nashr qilingan revisioni mavjud emas."
-                )
-
-            if (
-                    university.published_revision.status
-                    != UniversityRevision.Status.PUBLISHED
-            ):
-                raise ValidationError(
-                    "Universitetning faol revisioni PUBLISHED holatida emas."
-                )
-
-            has_published_translation = (
-                UniversityTranslation.objects
-                .filter(
-                    university_id=university.pk,
-                    published_revision__isnull=False,
-                    published_revision__status=(
-                        UniversityTranslationRevision.Status.PUBLISHED
-                    ),
-                )
-                .exists()
-            )
-
-            if not has_published_translation:
-                raise ValidationError(
-                    "Kamida bitta nashr qilingan tarjima mavjud bo'lishi shart."
-                )
 
         university.status = new_status
         university.updated_by = actor
