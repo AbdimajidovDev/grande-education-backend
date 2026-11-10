@@ -1,0 +1,147 @@
+from rest_framework import serializers
+
+from apps.universities.models import (
+    UniversityTranslation,
+    UniversityTranslationRevision,
+)
+from apps.universities.constants import SUPPORTED_LANGUAGES
+
+
+class UniversityTranslationCreateSerializer(serializers.Serializer):
+    """Universitet uchun yangi tarjima yaratish serializeri."""
+
+    language_code = serializers.ChoiceField(
+        choices=[
+            (code, name)
+            for code, name in SUPPORTED_LANGUAGES.items()
+        ],
+        required=True,
+    )
+    name = serializers.CharField(
+        max_length=255,
+        required=True,
+        trim_whitespace=True,
+    )
+    slug = serializers.SlugField(
+        max_length=255,
+        required=True,
+    )
+    description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    seo_title = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    seo_description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
+
+class UniversityTranslationRevisionCreateSerializer(serializers.Serializer):
+    """Mavjud tarjima uchun yangi revision yaratish serializeri."""
+
+    name = serializers.CharField(
+        max_length=255,
+        required=True,
+        trim_whitespace=True,
+    )
+    slug = serializers.SlugField(
+        max_length=255,
+        required=True,
+    )
+    description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    seo_title = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    seo_description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
+
+class UniversityTranslationRevisionUpdateSerializer(serializers.Serializer):
+    """Draft tarjima revisionini yangilash serializeri."""
+
+    name = serializers.CharField(
+        max_length=255,
+        required=False,
+        trim_whitespace=True,
+    )
+    slug = serializers.SlugField(
+        max_length=255,
+        required=False,
+    )
+    description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    seo_title = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
+    seo_description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+
+
+class UniversityTranslationListSerializer(serializers.ModelSerializer):
+    """Universitet tarjimalari ro'yxati uchun serializer."""
+
+    class Meta:
+        model = UniversityTranslation
+        fields = [
+            "id",
+            "university",
+            "language_code",
+            "slug",
+            "published_revision",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class UniversityTranslationRevisionDetailSerializer(
+    serializers.ModelSerializer
+):
+    """Tarjima revisionining to'liq ma'lumotlari uchun serializer."""
+
+    class Meta:
+        model = UniversityTranslationRevision
+        fields = [
+            "id",
+            "translation",
+            "revision_number",
+            "name",
+            "slug",
+            "description",
+            "seo_title",
+            "seo_description",
+            "status",
+            "created_by",
+            "approved_by",
+            "approved_at",
+            "published_at",
+            "scheduled_publish_at",
+            "rejection_reason",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
