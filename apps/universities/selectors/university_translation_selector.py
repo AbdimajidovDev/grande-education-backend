@@ -4,6 +4,7 @@ from apps.universities.models import (
     UniversityTranslation,
     UniversityTranslationRevision, University, UniversityRevision,
 )
+from apps.universities.constants import SUPPORTED_LANGUAGES
 
 
 class UniversityTranslationSelector:
@@ -16,13 +17,12 @@ class UniversityTranslationSelector:
         return (
             UniversityTranslation.objects
             .select_related(
-                "translation",
-                "translation__university",
-                "created_by",
-                "approved_by",
+                "university",
+                "published_revision",
             )
             .order_by("university_id", "language_code")
         )
+
 
     @staticmethod
     def get_translations_by_university(
@@ -138,11 +138,9 @@ class UniversityTranslationSelector:
         Mavjud bo'lmasa, Uzbek tarjimasiga fallback qiladi.
         """
 
-        supported_languages = {"uz", "ru", "en", "zh-hans", "ja", "de"}
-
         language_code = (language_code or "").strip().lower()
 
-        if language_code not in supported_languages:
+        if language_code not in SUPPORTED_LANGUAGES:
             language_code = "uz"
 
         translation = (

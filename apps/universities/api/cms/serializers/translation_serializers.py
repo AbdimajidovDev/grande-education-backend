@@ -145,3 +145,13 @@ class UniversityTranslationRevisionDetailSerializer(
             "updated_at",
         ]
         read_only_fields = fields
+
+
+
+class UniversityTranslationRevisionRejectSerializer(serializers.Serializer):
+    reason = serializers.CharField(
+        required=True,
+        max_length=2000,
+        trim_whitespace=True,
+        allow_blank=False,
+    )

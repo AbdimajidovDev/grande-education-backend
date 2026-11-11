@@ -440,3 +440,145 @@ class UniversityAdmissionPeriod(models.Model):
 
     def __str__(self):
         return f"{self.university_revision_id} / {self.name}"
+
+
+class FAQ(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "-created_at"]
+        permissions = [
+            ("submit_review_faq", "Can submit FAQ for review"),
+            ("approve_faq", "Can approve FAQ"),
+            ("reject_faq", "Can reject FAQ"),
+            ("publish_faq", "Can publish FAQ"),
+        ]
+        indexes = [
+            models.Index(
+                fields=["is_active", "order"],
+                name="faq_active_order_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"FAQ: {self.pk}"
+
+
+class FAQTranslation(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    faq = models.ForeignKey(
+        FAQ,
+        on_delete=models.PROTECT,
+        related_name="translations",
+    )
+    language_code = models.CharField(max_length=10)
+
+    published_revision = models.ForeignKey(
+        "FAQTranslationRevision",
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["faq", "language_code"],
+                name="unique_faq_language",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.faq_id} - {self.language_code}"
+
+
+class FAQTranslationRevision(models.Model):
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        REVIEW = "review", "Review"
+        PUBLISHED = "published", "Published"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    translation = models.ForeignKey(
+        FAQTranslation,
+        on_delete=models.PROTECT,
+        related_name="revisions",
+    )
+
+    revision_number = models.PositiveIntegerField()
+
+    question = models.CharField(max_length=500)
+    answer = models.TextField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_faq_revisions",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="approved_faq_revisions",
+        null=True,
+        blank=True,
+    )
+
+    approved_at = models.DateTimeField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    scheduled_publish_at = models.DateTimeField(null=True, blank=True)
+
+    rejection_reason = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-revision_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["translation", "revision_number"],
+                name="unique_faq_translation_revision",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["translation", "status"],
+                name="faq_trans_revision_status_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.translation_id} - "
+            f"Revision {self.revision_number}"
+        )
+
