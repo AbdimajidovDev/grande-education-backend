@@ -2,9 +2,8 @@ THIRD_PARTY_APPS = [
     "corsheaders",
     "rest_framework",
     "drf_spectacular",
-    # 'rest_framework_simplejwt',
-    # ishlatilgan refresh tokenlar qora ro'yxatga tushadi.
-    # 'rest_framework_simplejwt.token_blacklist',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
 ]
 
 DEFAULT_APPS = [
@@ -18,6 +17,7 @@ DEFAULT_APPS = [
 ]
 
 LOCAL_APPS = [
+    "apps.common.apps.CommonConfig",
     "apps.users",
     "apps.rbac",
     "apps.universities",

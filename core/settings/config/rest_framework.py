@@ -16,7 +16,10 @@ REST_FRAMEWORK = {
     # BasicAuthentication olib tashlandi: cookie/JWT sxemasida ishlatilmaydi,
     # lekin har bir endpointda throttling'siz parol taxmin qilish yuzasini ochardi.
     "DEFAULT_AUTHENTICATION_CLASSES": [
-    "rest_framework.authentication.SessionAuthentication",
+        "apps.users.api.auth.authentication.CookieJWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework_simplejwt.authentication.JWTAuthentication",
+
     ],
     # Throttling global tarzda yoqilmaydi (biznes API'lariga xalal bermaslik uchun).
     # Faqat auth endpointlar (login, forgot-password, reset-password) o'z view'larida

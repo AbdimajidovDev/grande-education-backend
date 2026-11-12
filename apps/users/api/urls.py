@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 
 from apps.users.api.views import (
     EmployeeListCreateAPIView,
@@ -10,6 +10,9 @@ from apps.users.api.views import (
 
 
 urlpatterns = [
+
+    path("auth/", include("apps.users.api.auth.urls")),
+
     path("employees/", EmployeeListCreateAPIView.as_view(), name="employee-list-create",),
     path("employees/<int:pk>/", EmployeeDetailAPIView.as_view(), name="employee-detail",),
     path("employees/<int:pk>/activate/", EmployeeActivateAPIView.as_view(), name="employee-activate",),

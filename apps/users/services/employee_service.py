@@ -57,10 +57,30 @@ class EmployeeService:
         return "unique_user_username_ci" in str(cause)
 
     @staticmethod
-    def _raise_username_conflict(exc: IntegrityError) -> None:
+    def _is_email_unique_violation(exc: IntegrityError) -> bool:
+        cause = exc.__cause__ or exc
+
+        constraint_name = getattr(
+            getattr(cause, "diag", None),
+            "constraint_name",
+            None,
+        )
+
+        if constraint_name == "unique_user_email_ci":
+            return True
+
+        return "unique_user_email_ci" in str(cause)
+
+    @staticmethod
+    def _raise_integrity_conflict(exc: IntegrityError) -> None:
         if EmployeeService._is_username_unique_violation(exc):
             raise ValidationError({
                 "username": "Ushbu username band."
+            }) from exc
+
+        if EmployeeService._is_email_unique_violation(exc):
+            raise ValidationError({
+                "email": "Ushbu email manzili boshqa foydalanuvchiga tegishli."
             }) from exc
 
         raise exc
@@ -113,6 +133,11 @@ class EmployeeService:
                 "username": "Username kiritilishi shart."
             })
 
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise ValidationError({
+                "email": "Ushbu email manzili boshqa foydalanuvchiga tegishli."
+            })
+
         if not password:
             raise ValidationError({
                 "password": "Parol kiritilishi shart."
@@ -150,8 +175,9 @@ class EmployeeService:
                     actor=actor,
                 )
 
+
         except IntegrityError as exc:
-            EmployeeService._raise_username_conflict(exc)
+            EmployeeService._raise_integrity_conflict(exc)
 
         return employee
 
@@ -221,7 +247,22 @@ class EmployeeService:
             update_fields.append("last_name")
 
         if email is not None:
-            employee.email = email.strip()
+            email = email.strip()
+
+            if email:
+                email_exists = (
+                    User.objects
+                    .filter(email__iexact=email)
+                    .exclude(pk=employee.pk)
+                    .exists()
+                )
+
+                if email_exists:
+                    raise ValidationError({
+                        "email": "Ushbu email manzili boshqa foydalanuvchiga tegishli."
+                    })
+
+            employee.email = email
             update_fields.append("email")
 
         if phone_number is not None:
@@ -237,7 +278,7 @@ class EmployeeService:
             with transaction.atomic():
                 employee.save(update_fields=update_fields)
         except IntegrityError as exc:
-            EmployeeService._raise_username_conflict(exc)
+            EmployeeService._raise_integrity_conflict(exc)
         return employee
 
 

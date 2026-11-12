@@ -82,6 +82,13 @@ CSRF_TRUSTED_ORIGINS = [
     if origin.strip()
 ]
 
+AUTH_COOKIE_ACCESS = "access_token"
+AUTH_COOKIE_REFRESH = "refresh_token"
+AUTH_COOKIE_HTTPONLY = True
+AUTH_COOKIE_SAMESITE = "None"
+AUTH_COOKIE_PATH = "/"
+
+CSRF_COOKIE_HTTPONLY = False
 # ===============================================================================================
 
 
@@ -162,13 +169,9 @@ MEDIA_ROOT = BASE_DIR / 'assets/media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# ========================  Email settings  ==========================================
-# Email configuration
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
-    },
-}
+# ======================== Email Settings ========================
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
 

@@ -32,8 +32,10 @@ DATABASES = {
 
 # EXPIRE_TIME = 1
 #
-# FRONTEND_URL = "http://127.0.0.1:8000/api/v1/users/auth"
-
+FRONTEND_URL = config(
+    "FRONTEND_URL",
+    default="http://localhost:3000",
+)
 
 # # Lokal muhitda Redis talab qilinmasin — WS bildirishnomalar InMemory qatlamda ishlaydi
 # CHANNEL_LAYERS = {
@@ -42,3 +44,31 @@ DATABASES = {
 #     }
 # }
 
+AUTH_COOKIE_SECURE = False
+AUTH_COOKIE_SAMESITE = "Lax"
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "KEY_PREFIX": "cu_grande_dev",
+        "TIMEOUT": 300,
+    }
+}
+
+# ===============    Celery   ========================
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default="redis://127.0.0.1:6379/2",
+)
+
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
