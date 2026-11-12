@@ -8,5 +8,6 @@ urlpatterns = [
 
     # Public API
     path("", include("apps.universities.api.urls")),
+    path("", include("apps.inquiries.api.urls")),
     # path("public/", include("apps.programs.api.urls")),
 ]

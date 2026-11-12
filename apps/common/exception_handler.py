@@ -57,8 +57,9 @@ def custom_exception_handler(exc, context):
         response.status_code = status.HTTP_404_NOT_FOUND
         details = {}
 
+
     elif isinstance(exc, APIException):
-        error_code = "api_error"
+        error_code = str(exc.get_codes())
         message = str(exc.detail)
         details = {}
 

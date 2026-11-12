@@ -1,0 +1,175 @@
+
+from rest_framework import serializers
+
+from apps.inquiries.models import Inquiry
+
+
+
+class InquiryListSerializer(serializers.ModelSerializer):
+    category = serializers.CharField(
+        source="category.slug",
+        read_only=True,
+    )
+    university_id = serializers.IntegerField(
+        read_only=True,
+    )
+    assignee_username = serializers.CharField(
+        source="assignee.username",
+        read_only=True,
+        default=None,
+    )
+
+    class Meta:
+        model = Inquiry
+        fields = (
+            "id",
+            "full_name",
+            "phone_number",
+            "email",
+            "category",
+            "university_id",
+            "contact_method",
+            "status",
+            "assignee_username",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+
+class InquiryListQuerySerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=Inquiry.Status.choices,
+        required=False,
+    )
+    category = serializers.SlugField(
+        max_length=120,
+        required=False,
+    )
+    university_id = serializers.IntegerField(
+        min_value=1,
+        required=False,
+    )
+    assignee_id = serializers.IntegerField(
+        min_value=1,
+        required=False,
+    )
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+    search = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=False,
+    )
+
+    def validate(self, attrs):
+        date_from = attrs.get("date_from")
+        date_to = attrs.get("date_to")
+
+        if date_from and date_to and date_from > date_to:
+            raise serializers.ValidationError({
+                "date_to": "Tugash sanasi boshlanish sanasidan oldin bo'lishi mumkin emas."
+            })
+
+        return attrs
+
+
+
+class InquiryDetailSerializer(serializers.ModelSerializer):
+    category = serializers.CharField(source="category.slug", read_only=True)
+    university_id = serializers.IntegerField(read_only=True)
+    assignee_username = serializers.CharField(
+        source="assignee.username",
+        read_only=True,
+        default=None,
+    )
+
+    class Meta:
+        model = Inquiry
+        fields = (
+            "id",
+            "full_name",
+            "phone_number",
+            "email",
+            "category",
+            "university_id",
+            "contact_method",
+            "message",
+            "consent_accepted",
+            "consent_version",
+            "locale",
+            "status",
+            "assignee",
+            "assignee_username",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+
+class InquiryStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=Inquiry.Status.choices,
+    )
+    note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+    )
+
+    def validate_note(self, value):
+        return value.strip()
+
+
+
+from apps.users.models import User
+
+
+class InquiryAssignmentSerializer(serializers.Serializer):
+    assignee_id = serializers.PrimaryKeyRelatedField(
+        source="assignee",
+        queryset=User.objects.filter(is_active=True),
+        allow_null=True,
+        required=True,
+    )
+    note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+    )
+
+    def validate_note(self, value):
+        return value.strip()
+
+
+
+from apps.inquiries.models import InquiryActivity
+
+
+class InquiryActivitySerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(
+        source="actor.username",
+        read_only=True,
+        default=None,
+    )
+
+    class Meta:
+        model = InquiryActivity
+        fields = (
+            "id",
+            "action",
+            "note",
+            "actor_username",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+
+class InquiryCommentCreateSerializer(serializers.Serializer):
+    note = serializers.CharField(
+        max_length=1000,
+        allow_blank=False,
+        trim_whitespace=True,
+    )

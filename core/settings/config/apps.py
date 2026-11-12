@@ -9,7 +9,6 @@ THIRD_PARTY_APPS = [
 
 DEFAULT_APPS = [
     'jazzmin',
-    # 'modeltranslation',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -22,4 +21,5 @@ LOCAL_APPS = [
     "apps.users",
     "apps.rbac",
     "apps.universities",
+    "apps.inquiries"
 ]

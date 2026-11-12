@@ -28,6 +28,7 @@ REST_FRAMEWORK = {
         'password_reset_request_email': '3/hour',
         'password_reset_confirm': '5/min',
         'otp_resend': '3/min',
+        'public_inquiry': '5/hour',
     },
 }
 
