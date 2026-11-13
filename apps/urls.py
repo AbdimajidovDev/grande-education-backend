@@ -8,7 +8,8 @@ urlpatterns = [
     path("admin/", include("apps.programs.api.admin_urls")),
     path("admin/", include("apps.partners.api.admin_urls")),
     path("admin/", include("apps.teachers.api.admin_urls")),
-
+    path("admin/", include("apps.directions.api.admin_urls")),
+    path("admin/", include("apps.site_settings.api.admin_urls")),
 
     # Public API
     path("", include("apps.universities.api.urls")),
@@ -16,4 +17,6 @@ urlpatterns = [
     path("public/", include("apps.programs.api.public_urls")),
     path("public/", include("apps.partners.api.public_urls")),
     path("public/", include("apps.teachers.api.public_urls")),
+    path("public/", include("apps.directions.api.public_urls")),
+    path("public/", include("apps.site_settings.api.public_urls")),
 ]

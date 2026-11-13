@@ -14,6 +14,7 @@ from apps.teachers.services import (
     update_teacher,
     delete_teacher,
 )
+from drf_spectacular.utils import extend_schema, extend_schema_view
 
 
 class TeacherModelPermissions(DjangoModelPermissions):
@@ -28,6 +29,38 @@ class TeacherModelPermissions(DjangoModelPermissions):
     }
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="Teachers list",
+        description="Barcha o'qituvchilar ro'yxatini qaytaradi.",
+        tags=["Teachers - Admin"],
+    ),
+    create=extend_schema(
+        summary="Create teacher",
+        description="Yangi o'qituvchi va uning tarjimalarini yaratadi.",
+        tags=["Teachers - Admin"],
+    ),
+    retrieve=extend_schema(
+        summary="Teacher detail",
+        description="ID orqali bitta o'qituvchi ma'lumotlarini qaytaradi.",
+        tags=["Teachers - Admin"],
+    ),
+    update=extend_schema(
+        summary="Update teacher",
+        description="O'qituvchi ma'lumotlarini to'liq yangilaydi.",
+        tags=["Teachers - Admin"],
+    ),
+    partial_update=extend_schema(
+        summary="Partial update teacher",
+        description="O'qituvchi ma'lumotlarini qisman yangilaydi.",
+        tags=["Teachers - Admin"],
+    ),
+    destroy=extend_schema(
+        summary="Delete teacher",
+        description="O'qituvchini o'chiradi.",
+        tags=["Teachers - Admin"],
+    ),
+)
 class TeacherViewSet(viewsets.ModelViewSet):
     serializer_class = TeacherAdminSerializer
     permission_classes = [TeacherModelPermissions]

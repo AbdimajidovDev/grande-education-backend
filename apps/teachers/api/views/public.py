@@ -29,6 +29,7 @@ class PublicTeacherListView(generics.ListAPIView):
         return language_code
 
     @extend_schema(
+        tags=["Public - Teachers"],
         summary="Public teachers list",
         description=(
             "Faol o'qituvchilar ro'yxatini so'ralgan tilda qaytaradi. "

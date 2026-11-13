@@ -25,4 +25,6 @@ LOCAL_APPS = [
     "apps.programs",
     "apps.partners",
     "apps.teachers",
+    "apps.directions",
+    "apps.site_settings",
 ]
