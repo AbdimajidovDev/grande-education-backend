@@ -21,5 +21,8 @@ LOCAL_APPS = [
     "apps.users",
     "apps.rbac",
     "apps.universities",
-    "apps.inquiries"
+    "apps.inquiries",
+    "apps.programs",
+    "apps.partners",
+    "apps.teachers",
 ]

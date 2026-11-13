@@ -8,3 +8,4 @@ phonenumbers==9.0.43
 djangorestframework_simplejwt==5.5.1
 redis==8.1.0
 celery==5.7.0
+pillow==13.0.0
