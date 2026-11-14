@@ -27,4 +27,5 @@ LOCAL_APPS = [
     "apps.teachers",
     "apps.directions",
     "apps.site_settings",
+    "apps.education_content",
 ]

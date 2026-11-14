@@ -10,6 +10,7 @@ urlpatterns = [
     path("admin/", include("apps.teachers.api.admin_urls")),
     path("admin/", include("apps.directions.api.admin_urls")),
     path("admin/", include("apps.site_settings.api.admin_urls")),
+    path("admin/", include("apps.education_content.api.admin_urls")),
 
     # Public API
     path("", include("apps.universities.api.urls")),
@@ -19,4 +20,5 @@ urlpatterns = [
     path("public/", include("apps.teachers.api.public_urls")),
     path("public/", include("apps.directions.api.public_urls")),
     path("public/", include("apps.site_settings.api.public_urls")),
+    path("public/", include("apps.education_content.api.public_urls"),),
 ]
