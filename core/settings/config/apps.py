@@ -28,4 +28,6 @@ LOCAL_APPS = [
     "apps.directions",
     "apps.site_settings",
     "apps.education_content",
+    "apps.admissions.apps.AdmissionsConfig",
+    "apps.dashboard",
 ]
