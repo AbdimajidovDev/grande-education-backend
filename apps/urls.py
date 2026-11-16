@@ -11,6 +11,8 @@ urlpatterns = [
     path("admin/", include("apps.directions.api.admin_urls")),
     path("admin/", include("apps.site_settings.api.admin_urls")),
     path("admin/", include("apps.education_content.api.admin_urls")),
+    path("admin/", include("apps.admissions.api.admin_urls")),
+    path("admin/dashboard/", include("apps.dashboard.api.urls")),
 
     # Public API
     path("", include("apps.universities.api.urls")),
