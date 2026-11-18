@@ -224,3 +224,5 @@ __marimo__/
 
 # Local authentication cookies
 cookies.txt
+/assets/media/
+/assets/staticfiles/
