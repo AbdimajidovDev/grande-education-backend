@@ -10,10 +10,9 @@ ALLOWED_HOSTS = [h.strip() for h in config('ALLOWED_HOSTS').split(',') if h.stri
 # Prod'da CORS oq ro'yxati bo'sh qolsa frontend umuman ishlamaydi (birorta
 # javobda Access-Control-Allow-Origin chiqmaydi) — jim sinishdan ko'ra
 # ishga tushishda darhol yiqilgan ma'qul.
-if not CORS_ALLOWED_ORIGINS:
+if not CORS_ALLOWED_ORIGINS and not CORS_ALLOW_ALL_ORIGINS:
     raise ImproperlyConfigured(
-        "CORS_ALLOWED_ORIGINS bo'sh. .env ga frontend originlarini yozing, "
-        "masalan: CORS_ALLOWED_ORIGINS=https://avtoyon.uz,https://www.avtoyon.uz"
+        "CORS_ALLOWED_ORIGINS yoki CORS_ALLOW_ALL_ORIGINS sozlanishi kerak."
     )
 
 
