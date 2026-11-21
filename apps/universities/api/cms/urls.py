@@ -27,6 +27,15 @@ from apps.universities.api.cms.views.admission_period_views import (
     UniversityAdmissionPeriodListCreateAPIView,
     UniversityAdmissionPeriodDetailAPIView,
 )
+from apps.universities.api.cms.views.major_views import (
+    UniversityMajorListCreateAPIView,
+    UniversityMajorDetailAPIView,
+    UniversityMajorTranslationAPIView,
+)
+from apps.universities.api.cms.views.media_views import (
+    UniversityMediaListCreateAPIView,
+    UniversityMediaDetailAPIView,
+)
 from apps.universities.api.cms.views.faq_views import (
     FAQListCreateAPIView,
     FAQDetailAPIView,
@@ -67,6 +76,15 @@ urlpatterns = [
     # University admission periods
     path("university-revisions/<uuid:revision_id>/admission-periods/", UniversityAdmissionPeriodListCreateAPIView.as_view(), name="university-admission-period-list-create", ),
     path("admission-periods/<uuid:period_id>/", UniversityAdmissionPeriodDetailAPIView.as_view(), name="university-admission-period-detail", ),
+
+    # University majors
+    path("university-revisions/<uuid:revision_id>/majors/", UniversityMajorListCreateAPIView.as_view(), name="university-major-list-create", ),
+    path("majors/<uuid:major_id>/", UniversityMajorDetailAPIView.as_view(), name="university-major-detail", ),
+    path("majors/<uuid:major_id>/translations/", UniversityMajorTranslationAPIView.as_view(), name="university-major-translation", ),
+
+    # University media
+    path("university-revisions/<uuid:revision_id>/media/", UniversityMediaListCreateAPIView.as_view(), name="university-media-list-create", ),
+    path("media/<uuid:media_id>/", UniversityMediaDetailAPIView.as_view(), name="university-media-detail", ),
 
     path("faqs/", FAQListCreateAPIView.as_view(), name="faq-list-create",),
     path( "faqs/<uuid:faq_id>/", FAQDetailAPIView.as_view(), name="faq-detail",),

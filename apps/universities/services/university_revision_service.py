@@ -99,6 +99,11 @@ class UniversityRevisionService:
         university_id,
         city: str,
         country: str,
+        city_native: str = "",
+        chinese_name: str = "",
+        established_year: int | None = None,
+        students_count: int | None = None,
+        international_students_count: int | None = None,
     ) -> UniversityRevision:
         """Universitet uchun yangi DRAFT revision yaratadi."""
 
@@ -109,12 +114,29 @@ class UniversityRevisionService:
 
         city = city.strip()
         country = country.strip()
+        city_native = city_native.strip() if city_native else ""
+        chinese_name = chinese_name.strip() if chinese_name else ""
 
         if not city:
             raise ValidationError({"city": "Shahar nomi kiritilishi shart."})
 
         if not country:
             raise ValidationError({"country": "Mamlakat nomi kiritilishi shart."})
+
+        if established_year is not None and established_year <= 0:
+            raise ValidationError({
+                "established_year": "Tashkil topgan yil musbat son bo'lishi kerak."
+            })
+
+        if students_count is not None and students_count < 0:
+            raise ValidationError({
+                "students_count": "Talabalar soni manfiy bo'lishi mumkin emas."
+            })
+
+        if international_students_count is not None and international_students_count < 0:
+            raise ValidationError({
+                "international_students_count": "Xalqaro talabalar soni manfiy bo'lishi mumkin emas."
+            })
 
         university = (
             University.objects
@@ -151,6 +173,11 @@ class UniversityRevisionService:
                 revision_number=next_revision_number,
                 city=city,
                 country=country,
+                city_native=city_native,
+                chinese_name=chinese_name,
+                established_year=established_year,
+                students_count=students_count,
+                international_students_count=international_students_count,
                 status=UniversityRevision.Status.DRAFT,
                 created_by=actor,
             )
@@ -167,6 +194,11 @@ class UniversityRevisionService:
         revision_id,
         city: str | None = None,
         country: str | None = None,
+        city_native: str | None = None,
+        chinese_name: str | None = None,
+        established_year: int | None = None,
+        students_count: int | None = None,
+        international_students_count: int | None = None,
     ) -> UniversityRevision:
         """Faqat DRAFT holatidagi revisionni tahrirlaydi."""
 
@@ -174,15 +206,6 @@ class UniversityRevisionService:
             actor,
             "change_university",
         )
-
-        city = city.strip()
-        country = country.strip()
-
-        if not city:
-            raise ValidationError({"city": "Shahar nomi kiritilishi shart."})
-
-        if not country:
-            raise ValidationError({"country": "Mamlakat nomi kiritilishi shart."})
 
         revision = UniversityRevisionService._get_revision_for_update(
             revision_id
@@ -193,9 +216,57 @@ class UniversityRevisionService:
                 "Faqat DRAFT holatidagi revisionni tahrirlash mumkin."
             )
 
-        revision.city = city
-        revision.country = country
-        revision.save(update_fields=["city", "country", "updated_at"])
+        update_fields = []
+
+        if city is not None:
+            city = city.strip()
+            if not city:
+                raise ValidationError({"city": "Shahar nomi kiritilishi shart."})
+            revision.city = city
+            update_fields.append("city")
+
+        if country is not None:
+            country = country.strip()
+            if not country:
+                raise ValidationError({"country": "Mamlakat nomi kiritilishi shart."})
+            revision.country = country
+            update_fields.append("country")
+
+        if city_native is not None:
+            revision.city_native = city_native.strip()
+            update_fields.append("city_native")
+
+        if chinese_name is not None:
+            revision.chinese_name = chinese_name.strip()
+            update_fields.append("chinese_name")
+
+        if established_year is not None:
+            if established_year <= 0:
+                raise ValidationError({
+                    "established_year": "Tashkil topgan yil musbat son bo'lishi kerak."
+                })
+            revision.established_year = established_year
+            update_fields.append("established_year")
+
+        if students_count is not None:
+            if students_count < 0:
+                raise ValidationError({
+                    "students_count": "Talabalar soni manfiy bo'lishi mumkin emas."
+                })
+            revision.students_count = students_count
+            update_fields.append("students_count")
+
+        if international_students_count is not None:
+            if international_students_count < 0:
+                raise ValidationError({
+                    "international_students_count": "Xalqaro talabalar soni manfiy bo'lishi mumkin emas."
+                })
+            revision.international_students_count = international_students_count
+            update_fields.append("international_students_count")
+
+        if update_fields:
+            update_fields.append("updated_at")
+            revision.save(update_fields=update_fields)
 
         return revision
 

@@ -122,6 +122,10 @@ class UniversityTranslationService:
         name: str,
         slug: str,
         description: str = "",
+        subtitle: str = "",
+        features: list | None = None,
+        accommodation_info: str = "",
+        admission_note: str = "",
         seo_title: str = "",
         seo_description: str = "",
     ) -> UniversityTranslation:
@@ -139,8 +143,12 @@ class UniversityTranslationService:
         name = name.strip()
         slug = slug.strip()
         description = description.strip()
+        subtitle = subtitle.strip()
+        accommodation_info = accommodation_info.strip()
+        admission_note = admission_note.strip()
         seo_title = seo_title.strip()
         seo_description = seo_description.strip()
+        features_list = features if isinstance(features, list) else []
 
         if language_code not in SUPPORTED_LANGUAGES:
             raise ValidationError({
@@ -184,7 +192,11 @@ class UniversityTranslationService:
                     revision_number=1,
                     name=name,
                     slug=slug,
+                    subtitle=subtitle,
                     description=description,
+                    features=features_list,
+                    accommodation_info=accommodation_info,
+                    admission_note=admission_note,
                     seo_title=seo_title,
                     seo_description=seo_description,
                     status=UniversityTranslationRevision.Status.DRAFT,
@@ -211,6 +223,10 @@ class UniversityTranslationService:
         name: str,
         slug: str,
         description: str = "",
+        subtitle: str = "",
+        features: list | None = None,
+        accommodation_info: str = "",
+        admission_note: str = "",
         seo_title: str = "",
         seo_description: str = "",
     ) -> UniversityTranslationRevision:
@@ -224,8 +240,12 @@ class UniversityTranslationService:
         name = name.strip()
         slug = slug.strip()
         description = description.strip()
+        subtitle = subtitle.strip()
+        accommodation_info = accommodation_info.strip()
+        admission_note = admission_note.strip()
         seo_title = seo_title.strip()
         seo_description = seo_description.strip()
+        features_list = features if isinstance(features, list) else []
 
         if not name:
             raise ValidationError({
@@ -292,7 +312,11 @@ class UniversityTranslationService:
                 revision_number=next_revision_number,
                 name=name,
                 slug=slug,
+                subtitle=subtitle,
                 description=description,
+                features=features_list,
+                accommodation_info=accommodation_info,
+                admission_note=admission_note,
                 seo_title=seo_title,
                 seo_description=seo_description,
                 status=UniversityTranslationRevision.Status.DRAFT,
@@ -314,6 +338,10 @@ class UniversityTranslationService:
             name: str | None = None,
             slug: str | None = None,
             description: str | None = None,
+            subtitle: str | None = None,
+            features: list | None = None,
+            accommodation_info: str | None = None,
+            admission_note: str | None = None,
             seo_title: str | None = None,
             seo_description: str | None = None,
     ) -> UniversityTranslationRevision:
@@ -340,6 +368,15 @@ class UniversityTranslationService:
 
         if description is not None:
             description = description.strip()
+
+        if subtitle is not None:
+            subtitle = subtitle.strip()
+
+        if accommodation_info is not None:
+            accommodation_info = accommodation_info.strip()
+
+        if admission_note is not None:
+            admission_note = admission_note.strip()
 
         if seo_title is not None:
             seo_title = seo_title.strip()
@@ -431,6 +468,22 @@ class UniversityTranslationService:
         if description is not None:
             revision.description = description
             update_fields.append("description")
+
+        if subtitle is not None:
+            revision.subtitle = subtitle
+            update_fields.append("subtitle")
+
+        if features is not None and isinstance(features, list):
+            revision.features = features
+            update_fields.append("features")
+
+        if accommodation_info is not None:
+            revision.accommodation_info = accommodation_info
+            update_fields.append("accommodation_info")
+
+        if admission_note is not None:
+            revision.admission_note = admission_note
+            update_fields.append("admission_note")
 
         if seo_title is not None:
             revision.seo_title = seo_title
