@@ -16,6 +16,38 @@ class UniversityRevisionCreateSerializer(serializers.Serializer):
         required=True,
         trim_whitespace=True,
     )
+    city_native = serializers.CharField(
+        max_length=150,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    chinese_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    established_year = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        min_value=1,
+    )
+    students_count = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        min_value=0,
+    )
+    international_students_count = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        min_value=0,
+    )
 
 
 class UniversityRevisionUpdateSerializer(serializers.Serializer):
@@ -33,6 +65,33 @@ class UniversityRevisionUpdateSerializer(serializers.Serializer):
         trim_whitespace=True,
         allow_blank=False,
     )
+    city_native = serializers.CharField(
+        max_length=150,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    chinese_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    established_year = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+    )
+    students_count = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+    )
+    international_students_count = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+    )
 
 
 class UniversityRevisionListSerializer(serializers.ModelSerializer):
@@ -46,6 +105,11 @@ class UniversityRevisionListSerializer(serializers.ModelSerializer):
             "revision_number",
             "city",
             "country",
+            "city_native",
+            "chinese_name",
+            "established_year",
+            "students_count",
+            "international_students_count",
             "status",
             "created_by",
             "approved_by",
@@ -69,6 +133,11 @@ class UniversityRevisionDetailSerializer(serializers.ModelSerializer):
             "revision_number",
             "city",
             "country",
+            "city_native",
+            "chinese_name",
+            "established_year",
+            "students_count",
+            "international_students_count",
             "status",
             "created_by",
             "approved_by",
