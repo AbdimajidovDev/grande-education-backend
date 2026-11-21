@@ -26,7 +26,28 @@ class UniversityTranslationCreateSerializer(serializers.Serializer):
         max_length=255,
         required=True,
     )
+    subtitle = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
     description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    features = serializers.ListField(
+        child=serializers.CharField(max_length=150),
+        required=False,
+        default=list,
+    )
+    accommodation_info = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    admission_note = serializers.CharField(
         required=False,
         allow_blank=True,
         default="",
@@ -56,7 +77,28 @@ class UniversityTranslationRevisionCreateSerializer(serializers.Serializer):
         max_length=255,
         required=True,
     )
+    subtitle = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
     description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    features = serializers.ListField(
+        child=serializers.CharField(max_length=150),
+        required=False,
+        default=list,
+    )
+    accommodation_info = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    admission_note = serializers.CharField(
         required=False,
         allow_blank=True,
         default="",
@@ -86,7 +128,24 @@ class UniversityTranslationRevisionUpdateSerializer(serializers.Serializer):
         max_length=255,
         required=False,
     )
+    subtitle = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
     description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    features = serializers.ListField(
+        child=serializers.CharField(max_length=150),
+        required=False,
+    )
+    accommodation_info = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    admission_note = serializers.CharField(
         required=False,
         allow_blank=True,
     )
@@ -131,7 +190,11 @@ class UniversityTranslationRevisionDetailSerializer(
             "revision_number",
             "name",
             "slug",
+            "subtitle",
             "description",
+            "features",
+            "accommodation_info",
+            "admission_note",
             "seo_title",
             "seo_description",
             "status",
