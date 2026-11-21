@@ -120,9 +120,36 @@ class UniversityRevision(models.Model):
         max_length=150,
         verbose_name="Shahar",
     )
+    city_native = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
+        verbose_name="Mahalliy shahar nomi",
+    )
     country = models.CharField(
         max_length=150,
         verbose_name="Mamlakat",
+    )
+    chinese_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Xitoycha nomi",
+    )
+    established_year = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Tashkil topgan yili",
+    )
+    students_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Talabalar soni",
+    )
+    international_students_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Xalqaro talabalar soni",
     )
 
     status = models.CharField(
@@ -286,9 +313,30 @@ class UniversityTranslationRevision(models.Model):
         max_length=255,
         verbose_name="URL identifikatori",
     )
+    subtitle = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Qisqa shior / Subtitle",
+    )
     description = models.TextField(
         blank=True,
         verbose_name="Tavsif",
+    )
+    features = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Asosiy afzalliklar / Teglar",
+    )
+    accommodation_info = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Yotoqxona ma'lumotlari",
+    )
+    admission_note = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Qabul talablari va eslatmalar",
     )
 
     seo_title = models.CharField(
@@ -581,4 +629,157 @@ class FAQTranslationRevision(models.Model):
             f"{self.translation_id} - "
             f"Revision {self.revision_number}"
         )
+
+
+class UniversityMajor(models.Model):
+    """Universitet yo'nalishlari (Mutaxassisliklari)."""
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    university_revision = models.ForeignKey(
+        UniversityRevision,
+        on_delete=models.CASCADE,
+        related_name="majors",
+        verbose_name="Universitet versiyasi",
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Tartib raqami",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Faol",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Universitet yo'nalishi"
+        verbose_name_plural = "Universitet yo'nalishlari"
+        ordering = ["order", "created_at"]
+        indexes = [
+            models.Index(
+                fields=["university_revision", "order"],
+                name="univ_major_rev_order_idx",
+            ),
+            models.Index(
+                fields=["university_revision", "is_active"],
+                name="univ_major_rev_active_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Major {self.id} (revision: {self.university_revision_id})"
+
+
+class UniversityMajorTranslation(models.Model):
+    """Universitet yo'nalishining muayyan til uchun tarjimasi."""
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    major = models.ForeignKey(
+        UniversityMajor,
+        on_delete=models.CASCADE,
+        related_name="translations",
+        verbose_name="Yo'nalish",
+    )
+    language_code = models.CharField(
+        max_length=10,
+        verbose_name="Til kodi",
+    )
+    title = models.CharField(
+        max_length=255,
+        verbose_name="Yo'nalish nomi",
+    )
+    description = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Yo'nalish tavsifi",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Universitet yo'nalishi tarjimasi"
+        verbose_name_plural = "Universitet yo'nalishi tarjimalari"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["major", "language_code"],
+                name="unique_univ_major_language",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["major", "language_code"],
+                name="univ_major_trans_lang_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.language_code})"
+
+
+class UniversityMedia(models.Model):
+    """Universitetning rasm va media fayllari (logo, cover, gallery)."""
+
+    class MediaType(models.TextChoices):
+        LOGO = "logo", "Logo"
+        COVER = "cover", "Cover"
+        GALLERY = "gallery", "Gallery"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    university_revision = models.ForeignKey(
+        UniversityRevision,
+        on_delete=models.CASCADE,
+        related_name="media_items",
+        verbose_name="Universitet versiyasi",
+    )
+    file = models.ImageField(
+        upload_to="universities/media/",
+        verbose_name="Media fayl",
+    )
+    media_type = models.CharField(
+        max_length=20,
+        choices=MediaType.choices,
+        default=MediaType.GALLERY,
+        db_index=True,
+        verbose_name="Media turi",
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Tartib raqami",
+    )
+    caption = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Sarlavha / Izoh",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Universitet media fayli"
+        verbose_name_plural = "Universitet media fayllari"
+        ordering = ["order", "created_at"]
+        indexes = [
+            models.Index(
+                fields=["university_revision", "media_type", "order"],
+                name="univ_media_rev_type_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.media_type}: {self.caption or self.file.name}"
+
 

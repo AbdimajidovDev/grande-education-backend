@@ -1,5 +1,6 @@
 
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import (
     University,
@@ -7,7 +8,35 @@ from .models import (
     UniversityTranslation,
     UniversityTranslationRevision,
     UniversityAdmissionPeriod,
+    UniversityMajor,
+    UniversityMajorTranslation,
+    UniversityMedia,
 )
+
+
+class UniversityMajorInline(admin.TabularInline):
+    model = UniversityMajor
+    extra = 0
+    fields = ("order", "is_active", "created_at")
+    readonly_fields = ("created_at",)
+    show_change_link = True
+
+
+class UniversityMediaInline(admin.TabularInline):
+    model = UniversityMedia
+    extra = 0
+    fields = ("thumbnail_preview", "media_type", "order", "caption", "created_at")
+    readonly_fields = ("thumbnail_preview", "created_at")
+    show_change_link = True
+
+    def thumbnail_preview(self, obj):
+        if obj.file:
+            return format_html(
+                '<img src="{}" style="max-height: 50px; max-width: 80px; object-fit: cover; border-radius: 4px;" />',
+                obj.file.url,
+            )
+        return "-"
+    thumbnail_preview.short_description = "Preview"
 
 
 class UniversityRevisionInline(admin.TabularInline):
@@ -82,13 +111,16 @@ class UniversityRevisionAdmin(admin.ModelAdmin):
         "university",
         "revision_number",
         "city",
-        "country",
+        "chinese_name",
+        "established_year",
+        "students_count",
         "status",
         "created_by",
         "published_at",
     )
     list_filter = ("status", "country", "created_at")
-    search_fields = ("city", "country", "university__id")
+    search_fields = ("city", "chinese_name", "country", "university__id")
+    inlines = (UniversityMajorInline, UniversityMediaInline)
     readonly_fields = (
         "id",
         "revision_number",
@@ -210,3 +242,51 @@ class UniversityAdmissionPeriodAdmin(admin.ModelAdmin):
     )
     list_select_related = ("university_revision",)
     ordering = ("application_start_date",)
+
+
+class UniversityMajorTranslationInline(admin.TabularInline):
+    model = UniversityMajorTranslation
+    extra = 0
+    fields = ("language_code", "title", "description")
+
+
+@admin.register(UniversityMajor)
+class UniversityMajorAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "university_revision",
+        "order",
+        "is_active",
+        "created_at",
+    )
+    list_filter = ("is_active", "created_at")
+    search_fields = ("id", "university_revision__id", "translations__title")
+    inlines = (UniversityMajorTranslationInline,)
+    ordering = ("order", "created_at")
+
+
+@admin.register(UniversityMedia)
+class UniversityMediaAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "thumbnail_preview",
+        "university_revision",
+        "media_type",
+        "order",
+        "caption",
+        "created_at",
+    )
+    list_filter = ("media_type", "created_at")
+    search_fields = ("caption", "university_revision__id")
+    readonly_fields = ("thumbnail_preview", "created_at", "updated_at")
+    ordering = ("order", "created_at")
+
+    def thumbnail_preview(self, obj):
+        if obj.file:
+            return format_html(
+                '<img src="{}" style="max-height: 50px; max-width: 80px; object-fit: cover; border-radius: 4px;" />',
+                obj.file.url,
+            )
+        return "-"
+    thumbnail_preview.short_description = "Preview"
+
