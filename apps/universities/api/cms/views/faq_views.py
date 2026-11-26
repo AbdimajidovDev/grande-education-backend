@@ -17,8 +17,17 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse
 
 from apps.universities.models import FAQ, FAQTranslation
 from apps.universities.api.permissions import (
-    CanViewUniversities,
-    CanUpdateUniversity,
+    CanViewFAQs,
+    CanCreateFAQ,
+    CanUpdateFAQ,
+    CanSubmitFAQForReview,
+    CanApproveFAQ,
+    CanRejectFAQ,
+    CanPublishFAQ,
+    CanDeleteFAQ,
+    CanViewFAQTranslations,
+    CanDeleteFAQTranslation,
+    CanDeleteFAQRevision,
 )
 from apps.universities.api.cms.serializers.faq_serializers import (
     FAQCreateSerializer,
@@ -31,6 +40,7 @@ from apps.universities.api.cms.serializers.faq_serializers import (
     FAQRevisionListSerializer,
 )
 from apps.universities.selectors.faq_selector import FAQSelector
+from apps.universities.services.exceptions import ResourceNotFoundError
 from apps.universities.services.faq_service import FAQService
 from apps.universities.services.faq_translation_service import (
     FAQTranslationService,
@@ -39,6 +49,9 @@ from apps.universities.services.faq_translation_service import (
 
 def handle_service_exception(exc):
     """Service exceptionlarini DRF exceptionlariga aylantiradi."""
+
+    if isinstance(exc, ResourceNotFoundError):
+        raise NotFound(str(exc)) from exc
 
     if isinstance(exc, DjangoValidationError):
         if hasattr(exc, "message_dict"):
@@ -57,8 +70,8 @@ class FAQListCreateAPIView(APIView):
 
     def get_permissions(self):
         if self.request.method == "GET":
-            return [CanViewUniversities()]
-        return [CanUpdateUniversity()]
+            return [CanViewFAQs()]
+        return [CanCreateFAQ()]
 
     @extend_schema(
         operation_id="list_faqs",
@@ -100,12 +113,18 @@ class FAQListCreateAPIView(APIView):
 
 
 class FAQDetailAPIView(APIView):
-    """Bitta FAQ ma'lumotlarini olish va yangilash."""
+    """Bitta FAQ ma'lumotlarini olish, yangilash va o'chirish."""
 
     def get_permissions(self):
-        if self.request.method == "GET":
-            return [CanViewUniversities()]
-        return [CanUpdateUniversity()]
+        permission_map = {
+            "GET": CanViewFAQs,
+            "PATCH": CanUpdateFAQ,
+            "DELETE": CanDeleteFAQ,
+        }
+        permission_class = permission_map.get(self.request.method)
+        if permission_class is None:
+            return super().get_permissions()
+        return [permission_class()]
 
     @extend_schema(
         operation_id="retrieve_faq",
@@ -149,14 +168,46 @@ class FAQDetailAPIView(APIView):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        operation_id="delete_faq",
+        tags=["CMS - FAQ"],
+        summary="Arxivlangan FAQni o'chirish",
+        description=(
+            "Faqat faolsizlantirilgan (is_active=False) va barcha tarjima "
+            "reviziyalari ARCHIVED holatida bo'lgan FAQni o'chiradi. "
+            "Talab qilinadigan permission: universities.delete_faq."
+        ),
+        responses={
+            204: OpenApiResponse(description="FAQ deleted."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="FAQ not found."),
+            422: OpenApiResponse(description="FAQ cannot be deleted."),
+        },
+    )
+    def delete(self, request, faq_id):
+        try:
+            FAQService.delete_faq(
+                actor=request.user,
+                faq_id=faq_id,
+            )
+        except (
+            ResourceNotFoundError,
+            DjangoValidationError,
+            DjangoPermissionDenied,
+        ) as exc:
+            handle_service_exception(exc)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class FAQTranslationListCreateAPIView(APIView):
     """FAQ tarjimalarini olish va yangi tarjima yaratish."""
 
     def get_permissions(self):
         if self.request.method == "GET":
-            return [CanViewUniversities()]
-        return [CanUpdateUniversity()]
+            return [CanViewFAQTranslations()]
+        return [CanCreateFAQ()]
 
     @extend_schema(
         operation_id="list_faq_translations",
@@ -204,13 +255,81 @@ class FAQTranslationListCreateAPIView(APIView):
         )
 
 
+class FAQTranslationDetailAPIView(APIView):
+    """FAQ tarjimasini olish va o'chirish."""
+
+    def get_permissions(self):
+        permission_map = {
+            "GET": CanViewFAQTranslations,
+            "DELETE": CanDeleteFAQTranslation,
+        }
+        permission_class = permission_map.get(self.request.method)
+        if permission_class is None:
+            return super().get_permissions()
+        return [permission_class()]
+
+    @extend_schema(
+        operation_id="retrieve_faq_translation",
+        tags=["CMS - FAQ"],
+        summary="FAQ tarjimasi ma'lumotlarini olish",
+        responses={
+            200: FAQTranslationListSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="FAQ translation not found."),
+        },
+    )
+    def get(self, request, translation_id):
+        translation = FAQSelector.get_translation_by_id(translation_id)
+
+        if translation is None:
+            raise NotFound("FAQ tarjimasi topilmadi.")
+
+        return Response(
+            FAQTranslationListSerializer(translation).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        operation_id="delete_faq_translation",
+        tags=["CMS - FAQ"],
+        summary="Arxivlangan FAQ tarjimasini o'chirish",
+        description=(
+            "Faqat barcha reviziyalari ARCHIVED holatida bo'lgan (nashr qilinmagan) "
+            "FAQ tarjimasini o'chiradi. "
+            "Talab qilinadigan permission: universities.delete_faqtranslation."
+        ),
+        responses={
+            204: OpenApiResponse(description="FAQ translation deleted."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="FAQ translation not found."),
+            422: OpenApiResponse(description="FAQ translation cannot be deleted."),
+        },
+    )
+    def delete(self, request, translation_id):
+        try:
+            FAQTranslationService.delete_translation(
+                actor=request.user,
+                translation_id=translation_id,
+            )
+        except (
+            ResourceNotFoundError,
+            DjangoValidationError,
+            DjangoPermissionDenied,
+        ) as exc:
+            handle_service_exception(exc)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class FAQRevisionListCreateAPIView(APIView):
     """Tarjima revisionlarini olish va yangi revision yaratish."""
 
     def get_permissions(self):
         if self.request.method == "GET":
-            return [CanViewUniversities()]
-        return [CanUpdateUniversity()]
+            return [CanViewFAQs()]
+        return [CanUpdateFAQ()]
 
     @extend_schema(
         operation_id="list_faq_revisions",
@@ -260,12 +379,18 @@ class FAQRevisionListCreateAPIView(APIView):
 
 
 class FAQRevisionDetailAPIView(APIView):
-    """FAQ revisionini olish va DRAFT holatida tahrirlash."""
+    """FAQ revisionini olish, DRAFT holatida tahrirlash va o'chirish."""
 
     def get_permissions(self):
-        if self.request.method == "GET":
-            return [CanViewUniversities()]
-        return [CanUpdateUniversity()]
+        permission_map = {
+            "GET": CanViewFAQs,
+            "PATCH": CanUpdateFAQ,
+            "DELETE": CanDeleteFAQRevision,
+        }
+        permission_class = permission_map.get(self.request.method)
+        if permission_class is None:
+            return super().get_permissions()
+        return [permission_class()]
 
     @extend_schema(
         operation_id="retrieve_faq_revision",
@@ -309,11 +434,51 @@ class FAQRevisionDetailAPIView(APIView):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        operation_id="delete_faq_revision",
+        tags=["CMS - FAQ"],
+        summary="ARCHIVED FAQ revisionini o'chirish",
+        description=(
+            "Faqat ARCHIVED holatidagi FAQ revisionini o'chiradi. "
+            "Talab qilinadigan permission: universities.delete_faqtranslationrevision."
+        ),
+        responses={
+            204: OpenApiResponse(description="FAQ revision deleted."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="FAQ revision not found."),
+            422: OpenApiResponse(description="FAQ revision cannot be deleted."),
+        },
+    )
+    def delete(self, request, revision_id):
+        try:
+            FAQTranslationService.delete_revision(
+                actor=request.user,
+                revision_id=revision_id,
+            )
+        except (
+            ResourceNotFoundError,
+            DjangoValidationError,
+            DjangoPermissionDenied,
+        ) as exc:
+            handle_service_exception(exc)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class FAQRevisionWorkflowAPIView(APIView):
     """FAQ revisionining REVIEW, APPROVE, REJECT va PUBLISH amallari."""
 
-    permission_classes = [CanUpdateUniversity]
+    def get_permissions(self):
+        action = self.kwargs.get("action")
+        permission_map = {
+            "submit": CanSubmitFAQForReview,
+            "approve": CanApproveFAQ,
+            "reject": CanRejectFAQ,
+            "publish": CanPublishFAQ,
+        }
+        permission_class = permission_map.get(action, CanUpdateFAQ)
+        return [permission_class()]
 
     @extend_schema(
         operation_id="change_faq_revision_workflow",
@@ -357,6 +522,43 @@ class FAQRevisionWorkflowAPIView(APIView):
         try:
             revision = service_method(**kwargs)
         except (DjangoValidationError, DjangoPermissionDenied) as exc:
+            handle_service_exception(exc)
+
+        return Response(
+            FAQRevisionListSerializer(revision).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class FAQRevisionArchiveAPIView(APIView):
+    """FAQ revisionini ARCHIVED holatiga o'tkazish API."""
+
+    permission_classes = [CanUpdateFAQ]
+
+    @extend_schema(
+        operation_id="archive_faq_revision",
+        tags=["CMS - FAQ"],
+        summary="FAQ revisionini arxivlash",
+        request=None,
+        responses={
+            200: FAQRevisionListSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="FAQ revision not found."),
+            422: OpenApiResponse(description="FAQ revision cannot be archived."),
+        },
+    )
+    def post(self, request, revision_id):
+        try:
+            revision = FAQTranslationService.archive_revision(
+                actor=request.user,
+                revision_id=revision_id,
+            )
+        except (
+            ResourceNotFoundError,
+            DjangoValidationError,
+            DjangoPermissionDenied,
+        ) as exc:
             handle_service_exception(exc)
 
         return Response(

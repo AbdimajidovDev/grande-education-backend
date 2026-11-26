@@ -783,3 +783,161 @@ class UniversityMedia(models.Model):
         return f"{self.media_type}: {self.caption or self.file.name}"
 
 
+class UniversityAuditLog(models.Model):
+    """Universitet va FAQ obyektlarini arxivlash/o'chirish audit yozuvlarini saqlaydi."""
+
+    class Action(models.TextChoices):
+        DELETE = "delete", "O'chirish"
+        ARCHIVE = "archive", "Arxivlash"
+
+    class ObjectType(models.TextChoices):
+        UNIVERSITY = "University", "University"
+        UNIVERSITY_REVISION = "UniversityRevision", "UniversityRevision"
+        UNIVERSITY_TRANSLATION = "UniversityTranslation", "UniversityTranslation"
+        UNIVERSITY_TRANSLATION_REVISION = (
+            "UniversityTranslationRevision",
+            "UniversityTranslationRevision",
+        )
+        UNIVERSITY_ADMISSION_PERIOD = (
+            "UniversityAdmissionPeriod",
+            "UniversityAdmissionPeriod",
+        )
+        UNIVERSITY_MAJOR = "UniversityMajor", "UniversityMajor"
+        UNIVERSITY_MEDIA = "UniversityMedia", "UniversityMedia"
+        FAQ = "FAQ", "FAQ"
+        FAQ_TRANSLATION = "FAQTranslation", "FAQTranslation"
+        FAQ_TRANSLATION_REVISION = (
+            "FAQTranslationRevision",
+            "FAQTranslationRevision",
+        )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="university_audit_logs",
+    )
+    actor_identifier = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        default=Action.DELETE,
+    )
+    object_type = models.CharField(
+        max_length=50,
+        choices=ObjectType.choices,
+    )
+    object_id = models.CharField(
+        max_length=64,
+        db_index=True,
+    )
+    object_repr = models.CharField(
+        max_length=255,
+    )
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "university_audit_logs"
+        verbose_name = "Universitet audit logi"
+        verbose_name_plural = "Universitet audit loglari"
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(
+                fields=["object_type", "object_id"],
+                name="univ_audit_obj_idx",
+            ),
+            models.Index(
+                fields=["action", "-timestamp"],
+                name="univ_audit_action_ts_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.action} {self.object_type} ({self.object_id})"
+
+
+class MediaCleanupTask(models.Model):
+    """Storage fayllarini commit'dan keyin xavfsiz tozalash va qayta urinish outbox jadvali."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Kutilmoqda"
+        COMPLETED = "completed", "Bajarildi"
+        FAILED = "failed", "Xatolik"
+        CANCELLED = "cancelled", "Bekor qilindi"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    file_path = models.CharField(
+        max_length=500,
+        db_index=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "university_media_cleanup_tasks"
+        verbose_name = "Media tozalash vazifasi"
+        verbose_name_plural = "Media tozalash vazifalari"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["status", "created_at"],
+                name="univ_media_clean_status_idx",
+            ),
+            models.Index(
+                fields=["file_path", "status"],
+                name="univ_media_clean_path_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.file_path} [{self.status}]"
+
+
+class MediaStorageLock(models.Model):
+    """Bir xil storage key uchun parallel reference/cleanup operatsiyalarini ketma-ketlashtiruvchi lock jadvali."""
+
+    file_path = models.CharField(
+        max_length=500,
+        unique=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "university_media_storage_locks"
+        verbose_name = "Media storage lock"
+        verbose_name_plural = "Media storage locklar"
+
+    def __str__(self):
+        return self.file_path
+
+

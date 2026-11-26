@@ -44,6 +44,32 @@ class CanUpdateUniversity(BaseUniversityPermission):
     message = "Universitet ma'lumotlarini tahrirlash uchun ruxsatingiz mavjud emas."
 
 
+class CanDeleteUniversity(BaseUniversityPermission):
+    permission_codename = "delete_university"
+    message = "Universitetni o'chirish uchun ruxsatingiz mavjud emas."
+
+
+class CanDeleteUniversityRevision(BaseUniversityPermission):
+    permission_codename = "delete_universityrevision"
+    message = "Universitet revisionini o'chirish uchun ruxsatingiz mavjud emas."
+
+
+class CanViewUniversityTranslations(BaseUniversityPermission):
+    permission_codename = "view_universitytranslation"
+    fallback_codenames = ("view_university",)
+    message = "Universitet tarjimalarini ko'rish uchun ruxsatingiz mavjud emas."
+
+
+class CanDeleteUniversityTranslation(BaseUniversityPermission):
+    permission_codename = "delete_universitytranslation"
+    message = "Universitet tarjimasini o'chirish uchun ruxsatingiz mavjud emas."
+
+
+class CanDeleteUniversityTranslationRevision(BaseUniversityPermission):
+    permission_codename = "delete_universitytranslationrevision"
+    message = "Universitet tarjima revisionini o'chirish uchun ruxsatingiz mavjud emas."
+
+
 class CanSubmitUniversityForReview(BaseUniversityPermission):
     permission_codename = "submit_review_university"
     message = "Universitetni ko‘rib chiqishga yuborish uchun ruxsatingiz mavjud emas."
@@ -112,3 +138,69 @@ class CanDeleteUniversityMedia(BaseUniversityPermission):
     permission_codename = "delete_universitymedia"
     fallback_codenames = ("change_university",)
     message = "Universitet media faylini o'chirish uchun ruxsatingiz mavjud emas."
+
+
+# FAQ permissions
+class CanViewFAQs(BaseUniversityPermission):
+    permission_codename = "view_faq"
+    fallback_codenames = (
+        "change_faq",
+        "add_faq",
+        "submit_review_faq",
+        "approve_faq",
+        "reject_faq",
+        "publish_faq",
+        "view_university",
+    )
+    message = "FAQlarni ko'rish uchun ruxsatingiz mavjud emas."
+
+
+class CanCreateFAQ(BaseUniversityPermission):
+    permission_codename = "add_faq"
+    message = "FAQ yaratish uchun ruxsatingiz mavjud emas."
+
+
+class CanUpdateFAQ(BaseUniversityPermission):
+    permission_codename = "change_faq"
+    message = "FAQni tahrirlash yoki arxivlash uchun ruxsatingiz mavjud emas."
+
+
+class CanSubmitFAQForReview(BaseUniversityPermission):
+    permission_codename = "submit_review_faq"
+    message = "FAQni ko'rib chiqishga yuborish uchun ruxsatingiz mavjud emas."
+
+
+class CanApproveFAQ(BaseUniversityPermission):
+    permission_codename = "approve_faq"
+    message = "FAQni tasdiqlash uchun ruxsatingiz mavjud emas."
+
+
+class CanRejectFAQ(BaseUniversityPermission):
+    permission_codename = "reject_faq"
+    message = "FAQni rad etish uchun ruxsatingiz mavjud emas."
+
+
+class CanPublishFAQ(BaseUniversityPermission):
+    permission_codename = "publish_faq"
+    message = "FAQni nashr qilish uchun ruxsatingiz mavjud emas."
+
+
+class CanDeleteFAQ(BaseUniversityPermission):
+    permission_codename = "delete_faq"
+    message = "FAQni o'chirish uchun ruxsatingiz mavjud emas."
+
+
+class CanViewFAQTranslations(BaseUniversityPermission):
+    permission_codename = "view_faqtranslation"
+    fallback_codenames = ("view_faq", "change_faq", "add_faq", "view_university")
+    message = "FAQ tarjimalarini ko'rish uchun ruxsatingiz mavjud emas."
+
+
+class CanDeleteFAQTranslation(BaseUniversityPermission):
+    permission_codename = "delete_faqtranslation"
+    message = "FAQ tarjimasini o'chirish uchun ruxsatingiz mavjud emas."
+
+
+class CanDeleteFAQRevision(BaseUniversityPermission):
+    permission_codename = "delete_faqtranslationrevision"
+    message = "FAQ revisionini o'chirish uchun ruxsatingiz mavjud emas."
