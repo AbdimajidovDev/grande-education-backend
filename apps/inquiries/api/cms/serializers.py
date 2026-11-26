@@ -1,7 +1,8 @@
 
 from rest_framework import serializers
 
-from apps.inquiries.models import Inquiry
+from apps.inquiries.models import Inquiry, InquiryCategory
+from apps.universities.models import University
 
 
 
@@ -10,8 +11,9 @@ class InquiryListSerializer(serializers.ModelSerializer):
         source="category.slug",
         read_only=True,
     )
-    university_id = serializers.IntegerField(
+    university_id = serializers.UUIDField(
         read_only=True,
+        allow_null=True,
     )
     assignee_username = serializers.CharField(
         source="assignee.username",
@@ -46,8 +48,7 @@ class InquiryListQuerySerializer(serializers.Serializer):
         max_length=120,
         required=False,
     )
-    university_id = serializers.IntegerField(
-        min_value=1,
+    university_id = serializers.UUIDField(
         required=False,
     )
     assignee_id = serializers.IntegerField(
@@ -77,7 +78,7 @@ class InquiryListQuerySerializer(serializers.Serializer):
 
 class InquiryDetailSerializer(serializers.ModelSerializer):
     category = serializers.CharField(source="category.slug", read_only=True)
-    university_id = serializers.IntegerField(read_only=True)
+    university_id = serializers.UUIDField(read_only=True, allow_null=True)
     assignee_username = serializers.CharField(
         source="assignee.username",
         read_only=True,
@@ -173,3 +174,74 @@ class InquiryCommentCreateSerializer(serializers.Serializer):
         allow_blank=False,
         trim_whitespace=True,
     )
+
+
+class AdminInquiryCreateSerializer(serializers.Serializer):
+    full_name = serializers.CharField(
+        max_length=255,
+        trim_whitespace=True,
+    )
+    phone_number = serializers.CharField(
+        max_length=20,
+        trim_whitespace=True,
+    )
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=InquiryCategory.objects.filter(is_active=True),
+    )
+    university = serializers.PrimaryKeyRelatedField(
+        queryset=University.objects.all(),
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+    contact_method = serializers.ChoiceField(
+        choices=Inquiry.ContactMethod.choices,
+        required=False,
+        default=Inquiry.ContactMethod.PHONE,
+    )
+    message = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    locale = serializers.CharField(
+        max_length=10,
+        required=False,
+        default="uz",
+        trim_whitespace=True,
+    )
+    assignee_id = serializers.PrimaryKeyRelatedField(
+        source="assignee",
+        queryset=User.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+    note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=1000,
+        trim_whitespace=True,
+    )
+
+    def validate_full_name(self, value):
+        if not value:
+            raise serializers.ValidationError("Ism va familiya kiritilishi shart.")
+        return value
+
+    def validate_phone_number(self, value):
+        if not value:
+            raise serializers.ValidationError("Telefon raqami kiritilishi shart.")
+        return value
+
+    def validate_locale(self, value):
+        value = value.lower()
+        if not value:
+            raise serializers.ValidationError("Til kodi kiritilishi shart.")
+        return value

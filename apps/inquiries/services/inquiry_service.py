@@ -1,8 +1,12 @@
 
+import uuid
+
+from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from rest_framework.exceptions import APIException
 
 from apps.inquiries.models import Inquiry, InquiryActivity
+from apps.rbac.services.role_service import RoleService
 
 
 class IdempotencyConflict(APIException):
@@ -87,6 +91,60 @@ def create_inquiry(validated_data):
             return existing, False
 
         raise
+
+
+def _ensure_inquiry_permission(actor, permission: str) -> None:
+    if actor is None or not actor.is_authenticated or not actor.is_active:
+        raise PermissionDenied(
+            "Bu amalni bajarish uchun faol foydalanuvchi bo'lishingiz kerak."
+        )
+
+    if actor.is_superuser:
+        return
+
+    permissions = RoleService._get_actor_role_permissions(actor)
+    if permission not in permissions:
+        raise PermissionDenied(
+            "Ushbu amalni bajarish uchun ruxsatingiz mavjud emas."
+        )
+
+
+@transaction.atomic
+def create_admin_inquiry(*, validated_data: dict, actor) -> Inquiry:
+    """Admin/call-center xodimi tomonidan yangi lead (Inquiry) yaratadi."""
+
+    _ensure_inquiry_permission(actor, "inquiries.add_inquiry")
+
+    data = validated_data.copy()
+    note = (data.pop("note", "") or "").strip()
+    assignee = data.get("assignee")
+
+    if assignee is not None and assignee.pk != actor.pk:
+        _ensure_inquiry_permission(actor, "inquiries.assign_inquiry")
+
+    data.setdefault("email", "")
+    data.setdefault("message", "")
+    data.setdefault("university", None)
+    data.setdefault("contact_method", Inquiry.ContactMethod.PHONE)
+    data.setdefault("locale", "uz")
+    data["consent_accepted"] = True
+    data["consent_version"] = "admin-manual"
+    data["idempotency_key"] = data.get("idempotency_key") or uuid.uuid4()
+
+    inquiry = Inquiry.objects.create(**data)
+
+    activity_note = f"Lead admin ({actor.username}) tomonidan yaratildi."
+    if note:
+        activity_note = f"{activity_note} Izoh: {note}"
+
+    InquiryActivity.objects.create(
+        inquiry=inquiry,
+        actor=actor,
+        action=InquiryActivity.Action.CREATED,
+        note=activity_note,
+    )
+
+    return inquiry
 
 
 

@@ -1,12 +1,13 @@
 
 from rest_framework import status
-from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, extend_schema_view
 
 from apps.inquiries.api.cms.serializers import (
+    AdminInquiryCreateSerializer,
     InquiryActivitySerializer,
     InquiryAssignmentSerializer,
     InquiryCommentCreateSerializer,
@@ -17,6 +18,7 @@ from apps.inquiries.api.cms.serializers import (
 )
 from apps.inquiries.api.pagination import InquiryPagination
 from apps.inquiries.api.permissions import (
+    CanAddInquiry,
     CanAssignInquiry,
     CanChangeInquiry,
     CanChangeInquiryStatus,
@@ -32,6 +34,7 @@ from apps.inquiries.selectors.inquiry_selector import (
 from apps.inquiries.services.inquiry_service import (
     add_inquiry_comment,
     assign_inquiry,
+    create_admin_inquiry,
     update_inquiry_status,
 )
 from apps.rbac.services.role_service import RoleService
@@ -45,17 +48,35 @@ from apps.rbac.services.role_service import RoleService
         description="Arizalarni filterlash, qidirish va pagination bilan olish.",
         parameters=[InquiryListQuerySerializer],
         responses={200: InquiryListSerializer(many=True)},
-    )
+    ),
+    post=extend_schema(
+        tags=["Admin - Inquiries"],
+        summary="Admin tomonidan yangi lead (ariza) yaratish",
+        description=(
+            "Call center yoki admin operatori mijoz nomidan yangi lead "
+            "(Inquiry) yaratadi va CREATED hodisasini tarixga yozadi."
+        ),
+        request=AdminInquiryCreateSerializer,
+        responses={201: InquiryDetailSerializer},
+    ),
 )
-class InquiryListAPIView(ListAPIView):
-    serializer_class = InquiryListSerializer
+class InquiryListCreateAPIView(ListCreateAPIView):
     pagination_class = InquiryPagination
 
-    permission_classes = [
-        IsAuthenticated,
-        CanViewInquiries | CanViewAllInquiries,
-    ]
+    def get_permissions(self):
+        if self.request.method == "POST":
+            permission_classes = [IsAuthenticated, CanAddInquiry]
+        else:
+            permission_classes = [
+                IsAuthenticated,
+                CanViewInquiries | CanViewAllInquiries,
+            ]
+        return [permission() for permission in permission_classes]
 
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return AdminInquiryCreateSerializer
+        return InquiryListSerializer
 
     def get_queryset(self):
         user = self.request.user
@@ -79,6 +100,23 @@ class InquiryListAPIView(ListAPIView):
             assignee_id=user.pk,
             filters=filters,
         )
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        inquiry = create_admin_inquiry(
+            validated_data=serializer.validated_data,
+            actor=request.user,
+        )
+
+        return Response(
+            InquiryDetailSerializer(inquiry).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+InquiryListAPIView = InquiryListCreateAPIView
 
 
 

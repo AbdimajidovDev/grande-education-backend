@@ -40,6 +40,16 @@ class CanViewAllInquiries(BasePermission):
         )
 
 
+class CanAddInquiry(BasePermission):
+    message = "Ariza yaratish uchun ruxsatingiz mavjud emas."
+
+    def has_permission(self, request, view):
+        return _has_inquiry_permission(
+            request.user,
+            "inquiries.add_inquiry",
+        )
+
+
 class CanChangeInquiry(BasePermission):
     message = "Arizani o'zgartirish uchun ruxsatingiz mavjud emas."
 
