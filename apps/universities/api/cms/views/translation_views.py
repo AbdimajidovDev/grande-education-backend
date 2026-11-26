@@ -15,7 +15,11 @@ from apps.common.pagination import StandardResultsPagination
 
 from apps.universities.api.permissions import (
     CanViewUniversities,
-    CanCreateUniversity, CanUpdateUniversity,
+    CanCreateUniversity,
+    CanUpdateUniversity,
+    CanViewUniversityTranslations,
+    CanDeleteUniversityTranslation,
+    CanDeleteUniversityTranslationRevision,
 )
 from apps.universities.api.cms.serializers.translation_serializers import (
     UniversityTranslationCreateSerializer,
@@ -25,6 +29,7 @@ from apps.universities.selectors.university_selector import UniversitySelector
 from apps.universities.selectors.university_translation_selector import (
     UniversityTranslationSelector,
 )
+from apps.universities.services.exceptions import ResourceNotFoundError
 from apps.universities.services.university_translation_service import (
     UniversityTranslationService,
 )
@@ -141,6 +146,79 @@ class UniversityTranslationListCreateAPIView(APIView):
         )
 
 
+class UniversityTranslationDetailAPIView(APIView):
+    """Universitet tarjimasini ko'rish va o'chirish API."""
+
+    def get_permissions(self):
+        permission_map = {
+            "GET": CanViewUniversityTranslations,
+            "DELETE": CanDeleteUniversityTranslation,
+        }
+
+        permission_class = permission_map.get(self.request.method)
+
+        if permission_class is None:
+            return super().get_permissions()
+
+        return [permission_class()]
+
+    @extend_schema(
+        operation_id="retrieve_university_translation",
+        tags=["Universities - Translations"],
+        summary="Universitet tarjimasi tafsilotlarini olish",
+        responses={
+            200: UniversityTranslationListSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Translation not found."),
+        },
+    )
+    def get(self, request, translation_id):
+        translation = UniversityTranslationSelector.get_translation_by_id(
+            translation_id=translation_id,
+        )
+
+        if translation is None:
+            raise NotFound("Universitet tarjimasi topilmadi.")
+
+        return Response(
+            UniversityTranslationListSerializer(translation).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        operation_id="delete_university_translation",
+        tags=["Universities - Translations"],
+        summary="Arxivlangan universitet tarjimasini o'chirish",
+        description=(
+            "Faqat barcha reviziyalari ARCHIVED holatida bo'lgan (nashr qilinmagan) "
+            "universitet tarjimasini o'chiradi. "
+            "Talab qilinadigan permission: universities.delete_universitytranslation."
+        ),
+        responses={
+            204: OpenApiResponse(description="Translation deleted."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Translation not found."),
+            422: OpenApiResponse(description="Translation cannot be deleted."),
+        },
+    )
+    def delete(self, request, translation_id):
+        try:
+            UniversityTranslationService.delete_translation(
+                actor=request.user,
+                translation_id=translation_id,
+            )
+        except ResourceNotFoundError as exc:
+            raise NotFound(str(exc)) from exc
+        except DjangoValidationError as exc:
+            handle_service_validation_error(exc)
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 
 
 
@@ -216,10 +294,18 @@ class UniversityTranslationRevisionListCreateAPIView(APIView):
 class UniversityTranslationRevisionDetailAPIView(APIView):
 
     def get_permissions(self):
-        if self.request.method == "GET":
-            return [CanViewUniversities()]
+        permission_map = {
+            "GET": CanViewUniversities,
+            "PATCH": CanUpdateUniversity,
+            "DELETE": CanDeleteUniversityTranslationRevision,
+        }
 
-        return [CanUpdateUniversity()]
+        permission_class = permission_map.get(self.request.method)
+
+        if permission_class is None:
+            return super().get_permissions()
+
+        return [permission_class()]
 
     @extend_schema(
         tags=["CMS - University Translations"],
@@ -265,6 +351,37 @@ class UniversityTranslationRevisionDetailAPIView(APIView):
         )
 
         return Response(response_serializer.data)
+
+    @extend_schema(
+        operation_id="delete_university_translation_revision",
+        tags=["CMS - University Translations"],
+        summary="ARCHIVED tarjima revisionini o'chirish",
+        description=(
+            "Faqat ARCHIVED holatidagi tarjima revisionini o'chiradi. "
+            "Talab qilinadigan permission: universities.delete_universitytranslationrevision."
+        ),
+        responses={
+            204: OpenApiResponse(description="Translation revision deleted."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Translation revision not found."),
+            422: OpenApiResponse(description="Translation revision cannot be deleted."),
+        },
+    )
+    def delete(self, request, revision_id):
+        try:
+            UniversityTranslationService.delete_revision(
+                actor=request.user,
+                revision_id=revision_id,
+            )
+        except ResourceNotFoundError as exc:
+            raise NotFound(str(exc)) from exc
+        except DjangoValidationError as exc:
+            handle_service_validation_error(exc)
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 
@@ -355,4 +472,41 @@ class UniversityTranslationRevisionPublishAPIView(APIView):
 
         serializer = UniversityTranslationRevisionDetailSerializer(revision)
         return Response(serializer.data)
+
+
+class UniversityTranslationRevisionArchiveAPIView(APIView):
+    """Tarjima revisionini ARCHIVED holatiga o'tkazish API."""
+
+    permission_classes = [CanUpdateUniversity]
+
+    @extend_schema(
+        operation_id="archive_university_translation_revision",
+        tags=["CMS - University Translations"],
+        summary="Tarjima revisionini arxivlash",
+        request=None,
+        responses={
+            200: UniversityTranslationRevisionDetailSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Translation revision not found."),
+            422: OpenApiResponse(description="Translation revision cannot be archived."),
+        },
+    )
+    def post(self, request, revision_id):
+        try:
+            revision = UniversityTranslationService.archive_revision(
+                actor=request.user,
+                revision_id=revision_id,
+            )
+        except ResourceNotFoundError as exc:
+            raise NotFound(str(exc)) from exc
+        except DjangoValidationError as exc:
+            handle_service_validation_error(exc)
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        return Response(
+            UniversityTranslationRevisionDetailSerializer(revision).data,
+            status=status.HTTP_200_OK,
+        )
 

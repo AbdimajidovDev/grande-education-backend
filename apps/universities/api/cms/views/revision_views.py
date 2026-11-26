@@ -16,6 +16,7 @@ from apps.common.pagination import StandardResultsPagination
 from apps.universities.api.permissions import (
     CanViewUniversities,
     CanUpdateUniversity,
+    CanDeleteUniversityRevision,
 )
 from apps.universities.api.cms.serializers.revision_serializers import (
     UniversityRevisionCreateSerializer,
@@ -27,6 +28,7 @@ from apps.universities.selectors.university_selector import UniversitySelector
 from apps.universities.selectors.university_revision_selector import (
     UniversityRevisionSelector,
 )
+from apps.universities.services.exceptions import ResourceNotFoundError
 from apps.universities.services.university_revision_service import (
     UniversityRevisionService,
 )
@@ -138,12 +140,13 @@ class UniversityRevisionListCreateAPIView(APIView):
 
 
 class UniversityRevisionDetailAPIView(APIView):
-    """Universitet revisionini ko'rish va tahrirlash API."""
+    """Universitet revisionini ko'rish, tahrirlash va o'chirish API."""
 
     def get_permissions(self):
         permission_map = {
             "GET": CanViewUniversities,
             "PATCH": CanUpdateUniversity,
+            "DELETE": CanDeleteUniversityRevision,
         }
 
         permission_class = permission_map.get(self.request.method)
@@ -208,6 +211,37 @@ class UniversityRevisionDetailAPIView(APIView):
             UniversityRevisionDetailSerializer(revision).data,
             status=status.HTTP_200_OK,
         )
+
+    @extend_schema(
+        operation_id="delete_university_revision",
+        tags=["Universities - Revisions"],
+        summary="ARCHIVED universitet revisionini o'chirish",
+        description=(
+            "Faqat ARCHIVED holatidagi universitet revisionini o'chiradi. "
+            "Talab qilinadigan permission: universities.delete_universityrevision."
+        ),
+        responses={
+            204: OpenApiResponse(description="Revision deleted."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Revision not found."),
+            422: OpenApiResponse(description="Revision cannot be deleted."),
+        },
+    )
+    def delete(self, request, revision_id):
+        try:
+            UniversityRevisionService.delete_revision(
+                actor=request.user,
+                revision_id=revision_id,
+            )
+        except ResourceNotFoundError as exc:
+            raise NotFound(str(exc)) from exc
+        except DjangoValidationError as exc:
+            handle_service_validation_error(exc)
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 
@@ -360,6 +394,43 @@ class UniversityRevisionPublishAPIView(APIView):
                 actor=request.user,
                 revision_id=revision_id,
             )
+        except DjangoValidationError as exc:
+            handle_service_validation_error(exc)
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        return Response(
+            UniversityRevisionDetailSerializer(revision).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class UniversityRevisionArchiveAPIView(APIView):
+    """Universitet revisionini ARCHIVED holatiga o'tkazish API."""
+
+    permission_classes = [CanUpdateUniversity]
+
+    @extend_schema(
+        operation_id="archive_university_revision",
+        tags=["Universities - Revisions"],
+        summary="Universitet revisionini arxivlash",
+        request=None,
+        responses={
+            200: UniversityRevisionDetailSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Revision not found."),
+            422: OpenApiResponse(description="Revision cannot be archived."),
+        },
+    )
+    def post(self, request, revision_id):
+        try:
+            revision = UniversityRevisionService.archive_revision(
+                actor=request.user,
+                revision_id=revision_id,
+            )
+        except ResourceNotFoundError as exc:
+            raise NotFound(str(exc)) from exc
         except DjangoValidationError as exc:
             handle_service_validation_error(exc)
         except DjangoPermissionDenied as exc:
