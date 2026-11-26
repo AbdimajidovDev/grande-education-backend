@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 
+from celery.schedules import crontab
 from .config import *
 from django.utils.translation import gettext_lazy as _
 
@@ -177,3 +178,24 @@ DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
 
 
 AUTH_USER_MODEL = "users.User"
+
+# ===============    Celery & Beat   ========================
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default="redis://127.0.0.1:6379/2",
+)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+CELERY_BEAT_SCHEDULE = {
+    "retry-failed-university-media-cleanups": {
+        "task": "apps.universities.tasks.retry_failed_university_media_cleanups",
+        "schedule": crontab(minute="*/15"),
+        "options": {"expires": 60 * 14},
+    },
+}
