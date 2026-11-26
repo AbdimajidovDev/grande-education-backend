@@ -1,6 +1,7 @@
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.files.storage import default_storage
 from django.db import transaction
 
 from apps.rbac.services.role_service import RoleService
@@ -8,6 +9,9 @@ from apps.universities.models import (
     University,
     UniversityRevision,
     UniversityMedia,
+)
+from apps.universities.services.media_lifecycle_service import (
+    MediaLifecycleService,
 )
 
 User = get_user_model()
@@ -122,7 +126,14 @@ class UniversityMediaService:
 
         caption = caption.strip() if caption else ""
 
-        # Agar logo yoki cover bo'lsa, avvalgilarining o'rnini almashtirish mumkin
+        if isinstance(file, str):
+            MediaLifecycleService.acquire_storage_key_lock(file)
+            if not default_storage.exists(file):
+                raise ValidationError({
+                    "file": "Ko'rsatilgan media fayl storage'da topilmadi."
+                })
+            MediaLifecycleService.register_reference(file_path=file)
+
         media = UniversityMedia.objects.create(
             university_revision=revision,
             file=file,
@@ -130,6 +141,9 @@ class UniversityMediaService:
             order=order,
             caption=caption,
         )
+
+        if media.file and not isinstance(file, str):
+            MediaLifecycleService.register_reference(file_path=media.file.name)
 
         return media
 
@@ -212,14 +226,9 @@ class UniversityMediaService:
             media.university_revision_id
         )
 
-        file_obj = media.file
+        file_path = media.file.name if media.file else ""
 
-        def _cleanup_storage_file():
-            try:
-                if file_obj:
-                    file_obj.delete(save=False)
-            except Exception:
-                pass
-
-        transaction.on_commit(_cleanup_storage_file)
         media.delete()
+
+        if file_path:
+            MediaLifecycleService.schedule_cleanup(file_paths=[file_path])
