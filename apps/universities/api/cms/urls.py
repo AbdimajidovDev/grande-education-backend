@@ -4,6 +4,7 @@ from django.urls import path
 from apps.universities.api.cms.views.university_views import (
     UniversityListCreateAPIView,
     UniversityDetailAPIView,
+    UniversityArchiveAPIView,
 )
 
 from apps.universities.api.cms.views.revision_views import (
@@ -13,15 +14,18 @@ from apps.universities.api.cms.views.revision_views import (
     UniversityRevisionApproveAPIView,
     UniversityRevisionRejectAPIView,
     UniversityRevisionPublishAPIView,
+    UniversityRevisionArchiveAPIView,
 )
 from apps.universities.api.cms.views.translation_views import (
     UniversityTranslationListCreateAPIView,
+    UniversityTranslationDetailAPIView,
     UniversityTranslationRevisionListCreateAPIView,
     UniversityTranslationRevisionDetailAPIView,
     UniversityTranslationRevisionSubmitAPIView,
     UniversityTranslationRevisionApproveAPIView,
     UniversityTranslationRevisionRejectAPIView,
     UniversityTranslationRevisionPublishAPIView,
+    UniversityTranslationRevisionArchiveAPIView,
 )
 from apps.universities.api.cms.views.admission_period_views import (
     UniversityAdmissionPeriodListCreateAPIView,
@@ -40,8 +44,10 @@ from apps.universities.api.cms.views.faq_views import (
     FAQListCreateAPIView,
     FAQDetailAPIView,
     FAQTranslationListCreateAPIView,
+    FAQTranslationDetailAPIView,
     FAQRevisionListCreateAPIView,
     FAQRevisionDetailAPIView,
+    FAQRevisionArchiveAPIView,
     FAQRevisionWorkflowAPIView,
 )
 
@@ -52,6 +58,7 @@ urlpatterns = [
     # Universities
     path("universities/", UniversityListCreateAPIView.as_view(), name="university-list-create", ),
     path("universities/<uuid:university_id>/", UniversityDetailAPIView.as_view(), name="university-detail", ),
+    path("universities/<uuid:university_id>/archive/", UniversityArchiveAPIView.as_view(), name="university-archive", ),
 
     # University revisions
     path("universities/<uuid:university_id>/revisions/", UniversityRevisionListCreateAPIView.as_view(), name="university-revision-list-create", ),
@@ -60,10 +67,12 @@ urlpatterns = [
     path("university-revisions/<uuid:revision_id>/approve/", UniversityRevisionApproveAPIView.as_view(), name="university-revision-approve",),
     path("university-revisions/<uuid:revision_id>/reject/", UniversityRevisionRejectAPIView.as_view(), name="university-revision-reject",),
     path("university-revisions/<uuid:revision_id>/publish/", UniversityRevisionPublishAPIView.as_view(), name="university-revision-publish",),
+    path("university-revisions/<uuid:revision_id>/archive/", UniversityRevisionArchiveAPIView.as_view(), name="university-revision-archive",),
 
 
     # University translations
     path("translations/<uuid:university_id>/", UniversityTranslationListCreateAPIView.as_view(), name="university-translation-list-create",),
+    path("university-translations/<uuid:translation_id>/", UniversityTranslationDetailAPIView.as_view(), name="university-translation-detail",),
 
     # Translation revisions
     path("translations/<uuid:translation_id>/revisions/", UniversityTranslationRevisionListCreateAPIView.as_view(), name="university-translation-revision-list-create",),
@@ -72,6 +81,7 @@ urlpatterns = [
     path("translation-revisions/<uuid:revision_id>/approve/", UniversityTranslationRevisionApproveAPIView.as_view(), name="university-translation-revision-approve",),
     path("translation-revisions/<uuid:revision_id>/reject/", UniversityTranslationRevisionRejectAPIView.as_view(), name="university-translation-revision-reject"),
     path("translation-revisions/<uuid:revision_id>/publish/", UniversityTranslationRevisionPublishAPIView.as_view(), name="university-translation-revision-publish",),
+    path("translation-revisions/<uuid:revision_id>/archive/", UniversityTranslationRevisionArchiveAPIView.as_view(), name="university-translation-revision-archive",),
 
     # University admission periods
     path("university-revisions/<uuid:revision_id>/admission-periods/", UniversityAdmissionPeriodListCreateAPIView.as_view(), name="university-admission-period-list-create", ),
@@ -87,9 +97,11 @@ urlpatterns = [
     path("media/<uuid:media_id>/", UniversityMediaDetailAPIView.as_view(), name="university-media-detail", ),
 
     path("faqs/", FAQListCreateAPIView.as_view(), name="faq-list-create",),
-    path( "faqs/<uuid:faq_id>/", FAQDetailAPIView.as_view(), name="faq-detail",),
+    path("faqs/<uuid:faq_id>/", FAQDetailAPIView.as_view(), name="faq-detail",),
     path("faqs/<uuid:faq_id>/translations/", FAQTranslationListCreateAPIView.as_view(), name="faq-translation-list-create",),
+    path("faq-translations/<uuid:translation_id>/", FAQTranslationDetailAPIView.as_view(), name="faq-translation-detail",),
     path("faq-translations/<uuid:translation_id>/revisions/", FAQRevisionListCreateAPIView.as_view(), name="faq-revision-list-create",),
     path("faq-revisions/<uuid:revision_id>/", FAQRevisionDetailAPIView.as_view(), name="faq-revision-detail",),
+    path("faq-revisions/<uuid:revision_id>/archive/", FAQRevisionArchiveAPIView.as_view(), name="faq-revision-archive",),
     path("faq-revisions/<uuid:revision_id>/<str:action>/", FAQRevisionWorkflowAPIView.as_view(), name="faq-revision-workflow",),
 ]

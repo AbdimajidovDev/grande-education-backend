@@ -1,12 +1,16 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
 from apps.rbac.services.role_service import RoleService
 from apps.universities.models import (
     University,
+    UniversityAuditLog,
     UniversityTranslation,
     UniversityTranslationRevision,
 )
+from apps.universities.services.audit_log_service import AuditLogService
+from apps.universities.services.exceptions import ResourceNotFoundError
 from django.utils import timezone
 from apps.universities.constants import SUPPORTED_LANGUAGES
 
@@ -17,7 +21,11 @@ class UniversityTranslationService:
     """Universitet tarjimalari va ularning revisionlarini boshqaradi."""
 
     @staticmethod
-    def _ensure_permission(actor: User, permission: str) -> None:
+    def _ensure_permission(
+        actor: User,
+        permission: str,
+        fallback_permissions: tuple[str, ...] = (),
+    ) -> None:
         if (
             actor is None
             or not actor.is_authenticated
@@ -32,14 +40,20 @@ class UniversityTranslationService:
             return
 
         actor_permissions = RoleService._get_actor_role_permissions(actor)
+        required = (permission, *fallback_permissions)
 
-        if f"universities.{permission}" not in actor_permissions:
+        if not any(f"universities.{perm}" in actor_permissions for perm in required):
             raise PermissionDenied(
                 "Ushbu amalni bajarish uchun ruxsatingiz mavjud emas."
             )
 
     @staticmethod
-    def _get_revision_for_update(revision_id):
+    def _get_revision_for_update(
+        revision_id,
+        *,
+        allow_archived_university: bool = False,
+        not_found_exc=ValidationError,
+    ):
         """University, Translation va Revision qatorlarini tartib bilan lock qiladi."""
 
         revision_info = (
@@ -50,7 +64,7 @@ class UniversityTranslationService:
         )
 
         if revision_info is None:
-            raise ValidationError(
+            raise not_found_exc(
                 "Universitet tarjimasi revisioni topilmadi."
             )
 
@@ -62,7 +76,7 @@ class UniversityTranslationService:
         )
 
         if translation_info is None:
-            raise ValidationError("Universitet tarjimasi topilmadi.")
+            raise not_found_exc("Universitet tarjimasi topilmadi.")
 
         university = (
             University.objects
@@ -72,9 +86,12 @@ class UniversityTranslationService:
         )
 
         if university is None:
-            raise ValidationError("Universitet topilmadi.")
+            raise not_found_exc("Universitet topilmadi.")
 
-        if university.status == University.Status.ARCHIVED:
+        if (
+            not allow_archived_university
+            and university.status == University.Status.ARCHIVED
+        ):
             raise ValidationError(
                 "Arxivlangan universitet revisioni bilan amal bajarish mumkin emas."
             )
@@ -90,7 +107,7 @@ class UniversityTranslationService:
         )
 
         if translation is None:
-            raise ValidationError("Universitet tarjimasi topilmadi.")
+            raise not_found_exc("Universitet tarjimasi topilmadi.")
 
         revision = (
             UniversityTranslationRevision.objects
@@ -103,10 +120,11 @@ class UniversityTranslationService:
         )
 
         if revision is None:
-            raise ValidationError(
+            raise not_found_exc(
                 "Universitet tarjimasi revisioni topilmadi."
             )
 
+        translation.university = university
         revision.translation = translation
 
         return revision
@@ -740,3 +758,251 @@ class UniversityTranslationService:
             }) from exc
 
         return revision
+
+    @staticmethod
+    @transaction.atomic
+    def archive_revision(
+        *,
+        actor: User,
+        revision_id,
+    ) -> UniversityTranslationRevision:
+        """PUBLISHED yoki DRAFT tarjima revisionini ARCHIVED holatiga o'tkazadi."""
+
+        UniversityTranslationService._ensure_permission(
+            actor,
+            "change_university",
+        )
+
+        revision = UniversityTranslationService._get_revision_for_update(
+            revision_id,
+            allow_archived_university=True,
+            not_found_exc=ResourceNotFoundError,
+        )
+
+        if revision.status == UniversityTranslationRevision.Status.ARCHIVED:
+            raise ValidationError(
+                "Ushbu tarjima revisioni allaqachon arxivlangan."
+            )
+
+        if revision.status not in (
+            UniversityTranslationRevision.Status.PUBLISHED,
+            UniversityTranslationRevision.Status.DRAFT,
+        ):
+            raise ValidationError(
+                "Faqat PUBLISHED yoki DRAFT holatidagi tarjima "
+                "revisionini arxivlash mumkin."
+            )
+
+        translation = revision.translation
+        university = translation.university
+        previous_status = revision.status
+
+        if translation.published_revision_id == revision.pk:
+            if (
+                university.status == University.Status.PUBLISHED
+                and translation.language_code == "uz"
+            ):
+                raise ValidationError(
+                    "Nashr qilingan universitetning asosiy (uz) tarjima "
+                    "revisionini arxivlashdan oldin universitetni arxivlang."
+                )
+            translation.published_revision = None
+            translation.slug = None
+            translation.save(
+                update_fields=["published_revision", "slug", "updated_at"]
+            )
+
+        revision.status = UniversityTranslationRevision.Status.ARCHIVED
+        revision.save(update_fields=["status", "updated_at"])
+
+        AuditLogService.log_archives(
+            actor=actor,
+            entries=[
+                {
+                    "object_type": UniversityAuditLog.ObjectType.UNIVERSITY_TRANSLATION_REVISION,
+                    "object_id": revision.pk,
+                    "object_repr": f"{revision.name} (rev {revision.revision_number})",
+                    "metadata": {
+                        "university_id": str(university.pk),
+                        "translation_id": str(translation.pk),
+                        "revision_number": revision.revision_number,
+                        "previous_status": previous_status,
+                        "new_status": revision.status,
+                    },
+                }
+            ],
+        )
+
+        return revision
+
+    @staticmethod
+    @transaction.atomic
+    def delete_translation(*, actor: User, translation_id) -> None:
+        """Faqat arxivlangan universitet tarjimasini va uning arxivlangan revisionlarini o'chiradi."""
+
+        UniversityTranslationService._ensure_permission(
+            actor,
+            "delete_universitytranslation",
+        )
+
+        translation_info = (
+            UniversityTranslation.objects
+            .filter(pk=translation_id)
+            .values("university_id")
+            .first()
+        )
+
+        if translation_info is None:
+            raise ResourceNotFoundError("Universitet tarjimasi topilmadi.")
+
+        university = (
+            University.objects
+            .select_for_update()
+            .filter(pk=translation_info["university_id"])
+            .first()
+        )
+
+        if university is None:
+            raise ResourceNotFoundError("Universitet topilmadi.")
+
+        translation = (
+            UniversityTranslation.objects
+            .select_for_update()
+            .filter(pk=translation_id, university_id=university.pk)
+            .first()
+        )
+
+        if translation is None:
+            raise ResourceNotFoundError("Universitet tarjimasi topilmadi.")
+
+        if translation.published_revision_id is not None:
+            raise ValidationError(
+                "Nashr qilingan universitet tarjimasini o'chirish mumkin emas."
+            )
+
+        if (
+            university.status == University.Status.PUBLISHED
+            and translation.language_code == "uz"
+        ):
+            raise ValidationError(
+                "Nashr qilingan universitetning asosiy (uz) tarjimasini "
+                "o'chirish mumkin emas."
+            )
+
+        revisions = list(
+            UniversityTranslationRevision.objects
+            .select_for_update()
+            .filter(translation=translation)
+            .order_by("id")
+        )
+
+        if any(
+            rev.status != UniversityTranslationRevision.Status.ARCHIVED
+            for rev in revisions
+        ):
+            raise ValidationError(
+                "Faqat barcha reviziyalari ARCHIVED holatida bo'lgan "
+                "tarjimani o'chirish mumkin."
+            )
+
+        if (
+            not revisions
+            and university.status != University.Status.ARCHIVED
+        ):
+            raise ValidationError(
+                "Faqat arxivlangan tarjimani o'chirish mumkin."
+            )
+
+        audit_entries = [
+            {
+                "object_type": UniversityAuditLog.ObjectType.UNIVERSITY_TRANSLATION_REVISION,
+                "object_id": rev.pk,
+                "object_repr": f"{rev.name} (rev {rev.revision_number})",
+                "metadata": {
+                    "university_id": str(university.pk),
+                    "translation_id": str(translation.pk),
+                    "revision_number": rev.revision_number,
+                    "status": rev.status,
+                    "deleted_via": "UniversityTranslation",
+                },
+            }
+            for rev in revisions
+        ]
+        audit_entries.append({
+            "object_type": UniversityAuditLog.ObjectType.UNIVERSITY_TRANSLATION,
+            "object_id": translation.pk,
+            "object_repr": f"UniversityTranslation ({translation.language_code})",
+            "metadata": {
+                "university_id": str(university.pk),
+                "language_code": translation.language_code,
+                "revisions_count": len(revisions),
+            },
+        })
+
+        if revisions:
+            UniversityTranslation.objects.filter(pk=translation.pk).update(
+                published_revision=None,
+            )
+            UniversityTranslationRevision.objects.filter(
+                translation=translation,
+            ).delete()
+
+        try:
+            translation.delete()
+        except ProtectedError as exc:
+            raise ValidationError(
+                "Tarjimaga bog'langan himoyalangan yozuvlar mavjudligi "
+                "sababli uni o'chirish mumkin emas."
+            ) from exc
+
+        AuditLogService.log_deletes(actor=actor, entries=audit_entries)
+
+    @staticmethod
+    @transaction.atomic
+    def delete_revision(*, actor: User, revision_id) -> None:
+        """Faqat ARCHIVED holatidagi tarjima revisionini o'chiradi."""
+
+        UniversityTranslationService._ensure_permission(
+            actor,
+            "delete_universitytranslationrevision",
+        )
+
+        revision = UniversityTranslationService._get_revision_for_update(
+            revision_id,
+            allow_archived_university=True,
+            not_found_exc=ResourceNotFoundError,
+        )
+
+        if revision.status != UniversityTranslationRevision.Status.ARCHIVED:
+            raise ValidationError(
+                "Faqat ARCHIVED holatidagi tarjima revisionini o'chirish mumkin."
+            )
+
+        if revision.translation.published_revision_id == revision.pk:
+            raise ValidationError(
+                "Tarjimaning joriy nashr qilingan revisionini o'chirish mumkin emas."
+            )
+
+        audit_entries = [
+            {
+                "object_type": UniversityAuditLog.ObjectType.UNIVERSITY_TRANSLATION_REVISION,
+                "object_id": revision.pk,
+                "object_repr": f"{revision.name} (rev {revision.revision_number})",
+                "metadata": {
+                    "university_id": str(revision.translation.university_id),
+                    "translation_id": str(revision.translation_id),
+                    "revision_number": revision.revision_number,
+                    "status": revision.status,
+                },
+            }
+        ]
+
+        try:
+            revision.delete()
+        except ProtectedError as exc:
+            raise ValidationError(
+                "Tarjima revisioniga bog'langan himoyalangan yozuvlar "
+                "mavjudligi sababli uni o'chirish mumkin emas."
+            ) from exc
+
+        AuditLogService.log_deletes(actor=actor, entries=audit_entries)
