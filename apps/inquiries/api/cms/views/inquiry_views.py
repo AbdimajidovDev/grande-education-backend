@@ -6,7 +6,7 @@ from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.generics import (
     ListAPIView,
     ListCreateAPIView,
-    RetrieveDestroyAPIView,
+    RetrieveUpdateDestroyAPIView,
 )
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +15,7 @@ from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_
 
 from apps.inquiries.api.cms.serializers import (
     AdminInquiryCreateSerializer,
+    AdminInquiryUpdateSerializer,
     InquiryActivitySerializer,
     InquiryAssignmentSerializer,
     InquiryCommentCreateSerializer,
@@ -44,6 +45,7 @@ from apps.inquiries.services.inquiry_service import (
     assign_inquiry,
     create_admin_inquiry,
     delete_inquiry,
+    update_inquiry,
     update_inquiry_status,
 )
 from apps.rbac.services.role_service import RoleService
@@ -147,6 +149,42 @@ InquiryListAPIView = InquiryListCreateAPIView
         summary="Ariza tafsilotlari",
         responses={200: InquiryDetailSerializer},
     ),
+    put=extend_schema(
+        tags=["Admin - Inquiries"],
+        summary="Ariza ma'lumotlarini to'liq tahrirlash",
+        description=(
+            "Arizaning tahrirlanadigan maydonlarini to'liq yangilaydi va "
+            "o'zgarishlarni InquiryActivity tarixiga yozadi. "
+            "Status va assignee alohida endpointlar orqali o'zgartiriladi. "
+            "Talab qilinadigan permission: inquiries.change_inquiry."
+        ),
+        request=AdminInquiryUpdateSerializer,
+        responses={
+            200: InquiryDetailSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Inquiry not found."),
+            422: OpenApiResponse(description="Validation error."),
+        },
+    ),
+    patch=extend_schema(
+        tags=["Admin - Inquiries"],
+        summary="Ariza ma'lumotlarini qisman tahrirlash",
+        description=(
+            "Arizaning yuborilgan maydonlarini yangilaydi va "
+            "o'zgarishlarni InquiryActivity tarixiga yozadi. "
+            "Status va assignee alohida endpointlar orqali o'zgartiriladi. "
+            "Talab qilinadigan permission: inquiries.change_inquiry."
+        ),
+        request=AdminInquiryUpdateSerializer,
+        responses={
+            200: InquiryDetailSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Inquiry not found."),
+            422: OpenApiResponse(description="Validation error."),
+        },
+    ),
     delete=extend_schema(
         tags=["Admin - Inquiries"],
         summary="Arizani o'chirish",
@@ -164,19 +202,25 @@ InquiryListAPIView = InquiryListCreateAPIView
         },
     ),
 )
-class InquiryDetailAPIView(RetrieveDestroyAPIView):
-    serializer_class = InquiryDetailSerializer
+class InquiryDetailAPIView(RetrieveUpdateDestroyAPIView):
     lookup_field = "pk"
 
     def get_permissions(self):
         if self.request.method == "DELETE":
             permission_classes = [IsAuthenticated, CanDeleteInquiry]
+        elif self.request.method in ("PUT", "PATCH"):
+            permission_classes = [IsAuthenticated, CanChangeInquiry]
         else:
             permission_classes = [
                 IsAuthenticated,
                 CanViewInquiries | CanViewAllInquiries,
             ]
         return [permission() for permission in permission_classes]
+
+    def get_serializer_class(self):
+        if self.request.method in ("PUT", "PATCH"):
+            return AdminInquiryUpdateSerializer
+        return InquiryDetailSerializer
 
     def get_object(self):
         assignee_id = _get_inquiry_assignee_scope(self.request.user)
@@ -191,6 +235,34 @@ class InquiryDetailAPIView(RetrieveDestroyAPIView):
 
         self.check_object_permissions(self.request, inquiry)
         return inquiry
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        inquiry = self.get_object()
+
+        serializer = self.get_serializer(
+            inquiry,
+            data=request.data,
+            partial=partial,
+        )
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            updated_inquiry = update_inquiry(
+                inquiry_id=inquiry.pk,
+                validated_data=serializer.validated_data,
+                actor=request.user,
+            )
+        except DjangoPermissionDenied as exc:
+            raise DRFPermissionDenied(str(exc)) from exc
+
+        return Response(
+            InquiryDetailSerializer(
+                updated_inquiry,
+                context=self.get_serializer_context(),
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     def perform_destroy(self, instance):
         try:

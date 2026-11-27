@@ -258,6 +258,72 @@ def add_inquiry_comment(
 
 
 @transaction.atomic
+def update_inquiry(
+    *,
+    inquiry_id,
+    validated_data: dict,
+    actor,
+) -> Inquiry:
+    """Ariza ma'lumotlarini tahrirlaydi va o'zgarishlarni faoliyat tarixiga yozadi."""
+
+    _ensure_inquiry_permission(actor, "inquiries.change_inquiry")
+
+    data = validated_data.copy()
+    note = (data.pop("note", "") or "").strip()
+
+    protected_fields = {
+        "status",
+        "assignee",
+        "assignee_id",
+        "consent_accepted",
+        "consent_version",
+        "idempotency_key",
+    }
+    if protected_fields.intersection(data):
+        raise ValueError(
+            "Status, assignee va tizim maydonlari bu funksiya orqali o'zgartirilmaydi."
+        )
+
+    inquiry = get_object_or_404(
+        Inquiry.objects.select_for_update().select_related(
+            "category",
+            "university",
+            "assignee",
+        ),
+        pk=inquiry_id,
+    )
+
+    changed_fields = []
+    updated_fields = []
+
+    for field, new_value in data.items():
+        if getattr(inquiry, field) == new_value:
+            continue
+
+        setattr(inquiry, field, new_value)
+        updated_fields.append(field)
+        changed_fields.append(field)
+
+    if updated_fields:
+        inquiry.save(update_fields=[*updated_fields, "updated_at"])
+
+        activity_note = (
+            f"Ma'lumotlar tahrirlandi ({', '.join(changed_fields)})."
+        )
+        if note:
+            activity_note = f"{activity_note} Izoh: {note}"
+
+        InquiryActivity.objects.create(
+            inquiry=inquiry,
+            actor=actor,
+            action=InquiryActivity.Action.DETAILS_UPDATED,
+            note=activity_note,
+        )
+
+    return inquiry
+
+
+@transaction.atomic
 def delete_inquiry(
     *,
     inquiry_id,

@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 
 from .models import User
 
@@ -9,6 +10,27 @@ from .models import User
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
     model = User
+
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        (
+            _("Personal info"),
+            {"fields": ("first_name", "last_name", "email", "phone_number")},
+        ),
+        (
+            _("Permissions"),
+            {"fields": ("is_active", "is_staff", "is_superuser")},
+        ),
+        (_("Important dates"), {"fields": ("last_login", "date_joined")}),
+    )
+    filter_horizontal = ()
+
+    def _get_excluded_fields(self, request, obj=None) -> tuple[str, ...]:
+        """RBAC orqali boshqariladigan maydonlarni admin formadan yashiradi."""
+        excluded = ["groups", "user_permissions"]
+        if not request.user.is_superuser:
+            excluded.append("is_superuser")
+        return tuple(excluded)
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -30,15 +52,28 @@ class CustomUserAdmin(UserAdmin):
 
         return super().has_delete_permission(request, obj)
 
+    def get_fieldsets(self, request, obj=None):
+        if not obj:
+            return self.add_fieldsets
+
+        excluded = set(self._get_excluded_fields(request, obj))
+        filtered_fieldsets = []
+
+        for name, options in super().get_fieldsets(request, obj):
+            fields = tuple(
+                field
+                for field in options.get("fields", ())
+                if field not in excluded
+            )
+            if not fields:
+                continue
+            filtered_fieldsets.append((name, {**options, "fields": fields}))
+
+        return tuple(filtered_fieldsets)
 
     def get_form(self, request, obj=None, **kwargs):
         exclude = list(kwargs.get("exclude") or [])
-
-        exclude.extend(["groups", "user_permissions"])
-
-        if not request.user.is_superuser:
-            exclude.append("is_superuser")
-
+        exclude.extend(self._get_excluded_fields(request, obj))
         kwargs["exclude"] = tuple(dict.fromkeys(exclude))
 
         return super().get_form(request, obj, **kwargs)

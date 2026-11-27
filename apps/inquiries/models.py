@@ -157,6 +157,7 @@ class InquiryActivity(models.Model):
         STATUS_CHANGED = "status_changed", "Holat o‘zgartirildi"
         ASSIGNED = "assigned", "Xodim biriktirildi"
         COMMENT = "comment", "Izoh qo‘shildi"
+        DETAILS_UPDATED = "details_updated", "Ma’lumotlar yangilandi"
 
     inquiry = models.ForeignKey("inquiries.Inquiry", on_delete=models.CASCADE, related_name="activities",)
 
