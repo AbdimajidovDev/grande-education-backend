@@ -176,7 +176,25 @@ class InquiryCommentCreateSerializer(serializers.Serializer):
     )
 
 
-class AdminInquiryCreateSerializer(serializers.Serializer):
+class InquiryAdminValidationMixin:
+    def validate_full_name(self, value):
+        if not value:
+            raise serializers.ValidationError("Ism va familiya kiritilishi shart.")
+        return value
+
+    def validate_phone_number(self, value):
+        if not value:
+            raise serializers.ValidationError("Telefon raqami kiritilishi shart.")
+        return value
+
+    def validate_locale(self, value):
+        value = value.lower()
+        if not value:
+            raise serializers.ValidationError("Til kodi kiritilishi shart.")
+        return value
+
+
+class AdminInquiryCreateSerializer(InquiryAdminValidationMixin, serializers.Serializer):
     full_name = serializers.CharField(
         max_length=255,
         trim_whitespace=True,
@@ -230,18 +248,52 @@ class AdminInquiryCreateSerializer(serializers.Serializer):
         trim_whitespace=True,
     )
 
-    def validate_full_name(self, value):
-        if not value:
-            raise serializers.ValidationError("Ism va familiya kiritilishi shart.")
-        return value
 
-    def validate_phone_number(self, value):
-        if not value:
-            raise serializers.ValidationError("Telefon raqami kiritilishi shart.")
-        return value
+class AdminInquiryUpdateSerializer(InquiryAdminValidationMixin, serializers.Serializer):
+    full_name = serializers.CharField(
+        max_length=255,
+        trim_whitespace=True,
+    )
+    phone_number = serializers.CharField(
+        max_length=20,
+        trim_whitespace=True,
+    )
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+    )
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=InquiryCategory.objects.all(),
+    )
+    university = serializers.PrimaryKeyRelatedField(
+        queryset=University.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    contact_method = serializers.ChoiceField(
+        choices=Inquiry.ContactMethod.choices,
+        required=False,
+    )
+    message = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    locale = serializers.CharField(
+        max_length=10,
+        required=False,
+        trim_whitespace=True,
+    )
+    note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=1000,
+        trim_whitespace=True,
+    )
 
-    def validate_locale(self, value):
-        value = value.lower()
-        if not value:
-            raise serializers.ValidationError("Til kodi kiritilishi shart.")
+    def validate_category(self, value):
+        if not value.is_active and (
+            self.instance is None or self.instance.category_id != value.pk
+        ):
+            raise serializers.ValidationError("Tanlangan kategoriya faol emas.")
         return value

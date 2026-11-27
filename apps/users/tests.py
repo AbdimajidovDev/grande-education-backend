@@ -149,3 +149,90 @@ class CustomUserAdminPermissionTests(TestCase):
             ).exists()
         )
 
+    def test_superuser_can_open_and_update_user_change_view(self):
+        from django.contrib.auth.models import Group
+
+        group = Group.objects.create(name="AdminTestRole")
+        self.superuser.groups.add(group)
+
+        self.client.force_login(self.superuser)
+
+        change_url = f"/admin/users/user/{self.superuser.pk}/change/"
+        res_get = self.client.get(change_url)
+        self.assertEqual(res_get.status_code, 200)
+        self.assertNotIn("groups", res_get.context["adminform"].form.fields)
+        self.assertNotIn("user_permissions", res_get.context["adminform"].form.fields)
+        self.assertIn("is_superuser", res_get.context["adminform"].form.fields)
+
+        res_post = self.client.post(
+            change_url,
+            {
+                "username": self.superuser.username,
+                "first_name": "Super",
+                "last_name": "Admin",
+                "email": self.superuser.email,
+                "phone_number": "+998901234567",
+                "is_active": "on",
+                "is_staff": "on",
+                "is_superuser": "on",
+                "last_login_0": "",
+                "last_login_1": "",
+                "date_joined_0": self.superuser.date_joined.strftime("%Y-%m-%d"),
+                "date_joined_1": self.superuser.date_joined.strftime("%H:%M:%S"),
+            },
+        )
+        self.assertEqual(res_post.status_code, 302)
+
+        self.superuser.refresh_from_db()
+        self.assertEqual(self.superuser.first_name, "Super")
+        self.assertEqual(self.superuser.phone_number, "+998901234567")
+        self.assertTrue(self.superuser.groups.filter(pk=group.pk).exists())
+
+    def test_regular_staff_can_open_regular_user_change_view_without_is_superuser(self):
+        from django.contrib.auth.models import Permission
+
+        perms = Permission.objects.filter(
+            content_type__app_label="users",
+            codename__in=["view_user", "change_user", "add_user"],
+        )
+        self.admin_user.user_permissions.add(*perms)
+
+        self.client.force_login(self.admin_user)
+
+        res_regular = self.client.get(f"/admin/users/user/{self.regular_user.pk}/change/")
+        self.assertEqual(res_regular.status_code, 200)
+        form_fields = res_regular.context["adminform"].form.fields
+        self.assertNotIn("is_superuser", form_fields)
+        self.assertNotIn("groups", form_fields)
+        self.assertNotIn("user_permissions", form_fields)
+
+        res_regular_post = self.client.post(
+            f"/admin/users/user/{self.regular_user.pk}/change/",
+            {
+                "username": self.regular_user.username,
+                "first_name": "Updated",
+                "last_name": "Regular",
+                "email": self.regular_user.email,
+                "phone_number": "+998909998877",
+                "is_active": "on",
+                "is_superuser": "on",
+                "last_login_0": "",
+                "last_login_1": "",
+                "date_joined_0": self.regular_user.date_joined.strftime("%Y-%m-%d"),
+                "date_joined_1": self.regular_user.date_joined.strftime("%H:%M:%S"),
+            },
+        )
+        self.assertEqual(res_regular_post.status_code, 302)
+        self.regular_user.refresh_from_db()
+        self.assertEqual(self.regular_user.first_name, "Updated")
+        self.assertEqual(self.regular_user.phone_number, "+998909998877")
+        self.assertFalse(self.regular_user.is_superuser)
+
+        res_add = self.client.get("/admin/users/user/add/")
+        self.assertEqual(res_add.status_code, 200)
+
+        # Superuser get_queryset dan chiqarilgani uchun change_view /admin/ ga redirect qiladi.
+        res_super = self.client.get(f"/admin/users/user/{self.superuser.pk}/change/")
+        self.assertEqual(res_super.status_code, 302)
+        self.assertEqual(res_super.url, "/admin/")
+

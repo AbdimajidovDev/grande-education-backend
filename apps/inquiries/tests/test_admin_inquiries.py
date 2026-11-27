@@ -317,3 +317,195 @@ class AdminInquiryDeleteTests(TestCase):
 
         res_missing = self.client.delete(f"/api/v1/admin/inquiries/{uuid.uuid4()}/")
         self.assertEqual(res_missing.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class AdminInquiryUpdateTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.superuser = User.objects.create_superuser(
+            username="inq_upd_super",
+            email="inq_upd_super@example.com",
+            password="Password123!",
+        )
+        cls.viewer_only = cls._make_user("inq_upd_viewer", "view_inquiry", "view_all_inquiries")
+        cls.scoped_editor = cls._make_user("inq_upd_scoped", "view_inquiry", "change_inquiry")
+        cls.other_agent = cls._make_user("inq_upd_other", "view_inquiry")
+        cls.full_editor = cls._make_user(
+            "inq_upd_full",
+            "view_inquiry",
+            "view_all_inquiries",
+            "change_inquiry",
+        )
+        cls.category = InquiryCategory.objects.create(slug="upd-cat-1", is_active=True)
+        cls.second_category = InquiryCategory.objects.create(slug="upd-cat-2", is_active=True)
+        cls.inactive_category = InquiryCategory.objects.create(slug="upd-cat-off", is_active=False)
+        cls.university = University.objects.create(
+            status=University.Status.PUBLISHED,
+            created_by=cls.superuser,
+        )
+
+    @staticmethod
+    def _make_user(username, *codenames):
+        user = User.objects.create_user(
+            username=username,
+            email=f"{username}@example.com",
+            password="Password123!",
+        )
+        if codenames:
+            group = Group.objects.create(name=f"Group_{username}")
+            perms = Permission.objects.filter(
+                content_type__app_label="inquiries",
+                codename__in=codenames,
+            )
+            group.permissions.add(*perms)
+            user.groups.add(group)
+        return user
+
+    def _create_inquiry(self, *, full_name="Original Name", assignee=None, category=None):
+        return Inquiry.objects.create(
+            category=category or self.category,
+            university=self.university,
+            full_name=full_name,
+            phone_number="+998901234567",
+            email="orig@example.com",
+            contact_method=Inquiry.ContactMethod.PHONE,
+            message="Initial message",
+            consent_accepted=True,
+            consent_version="admin-manual",
+            locale="uz",
+            idempotency_key=uuid.uuid4(),
+            assignee=assignee,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_auth_and_rbac_for_update_inquiry(self):
+        inquiry = self._create_inquiry(assignee=self.scoped_editor)
+        url = f"/api/v1/admin/inquiries/{inquiry.pk}/"
+
+        # 1. Unauthenticated -> 401
+        res_anon = self.client.patch(url, {"full_name": "Changed"}, format="json")
+        self.assertEqual(res_anon.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # 2. Viewer without change_inquiry -> 403
+        self.client.force_authenticate(user=self.viewer_only)
+        res_forbidden = self.client.patch(url, {"full_name": "Changed"}, format="json")
+        self.assertEqual(res_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Scoped editor can PATCH own assigned inquiry -> 200 and records activity
+        self.client.force_authenticate(user=self.scoped_editor)
+        res_ok = self.client.patch(
+            url,
+            {
+                "full_name": "  Yangi Ism  ",
+                "contact_method": Inquiry.ContactMethod.TELEGRAM,
+                "note": "Mijoz Telegramga o'tkazishni so'radi",
+                "status": Inquiry.Status.COMPLETED,
+            },
+            format="json",
+        )
+        self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_ok.data["full_name"], "Yangi Ism")
+        self.assertEqual(res_ok.data["contact_method"], Inquiry.ContactMethod.TELEGRAM)
+        # Protected/omitted fields remain unchanged
+        self.assertEqual(res_ok.data["status"], Inquiry.Status.NEW)
+        self.assertEqual(res_ok.data["phone_number"], "+998901234567")
+        self.assertEqual(str(res_ok.data["university_id"]), str(self.university.pk))
+
+        activity = InquiryActivity.objects.get(
+            inquiry=inquiry,
+            action=InquiryActivity.Action.DETAILS_UPDATED,
+        )
+        self.assertEqual(activity.actor, self.scoped_editor)
+        self.assertIn("full_name", activity.note)
+        self.assertIn("Mijoz Telegramga o'tkazishni so'radi", activity.note)
+
+    def test_scoped_editor_cannot_update_other_or_unassigned_inquiry(self):
+        other_inquiry = self._create_inquiry(assignee=self.other_agent)
+        unassigned_inquiry = self._create_inquiry(assignee=None)
+
+        self.client.force_authenticate(user=self.scoped_editor)
+
+        res_other = self.client.patch(
+            f"/api/v1/admin/inquiries/{other_inquiry.pk}/",
+            {"full_name": "Hack"},
+            format="json",
+        )
+        self.assertEqual(res_other.status_code, status.HTTP_404_NOT_FOUND)
+
+        res_unassigned = self.client.patch(
+            f"/api/v1/admin/inquiries/{unassigned_inquiry.pk}/",
+            {"full_name": "Hack"},
+            format="json",
+        )
+        self.assertEqual(res_unassigned.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_full_editor_put_validation_and_noop(self):
+        inquiry = self._create_inquiry(assignee=self.other_agent)
+        url = f"/api/v1/admin/inquiries/{inquiry.pk}/"
+        self.client.force_authenticate(user=self.full_editor)
+
+        # 1. PUT updates full fields and clears university when null is sent
+        res_put = self.client.put(
+            url,
+            {
+                "full_name": "Updated Full",
+                "phone_number": "+998931112233",
+                "email": "",
+                "category": self.second_category.pk,
+                "university": None,
+                "contact_method": Inquiry.ContactMethod.WHATSAPP,
+                "message": "Yangi xabar",
+                "locale": "RU",
+            },
+            format="json",
+        )
+        self.assertEqual(res_put.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_put.data["full_name"], "Updated Full")
+        self.assertEqual(res_put.data["category"], "upd-cat-2")
+        self.assertIsNone(res_put.data["university_id"])
+        self.assertEqual(res_put.data["locale"], "ru")
+
+        # 2. No-op PATCH does not create redundant activity
+        before_count = InquiryActivity.objects.filter(inquiry=inquiry).count()
+        res_noop = self.client.patch(url, {"full_name": "Updated Full"}, format="json")
+        self.assertEqual(res_noop.status_code, status.HTTP_200_OK)
+        self.assertEqual(InquiryActivity.objects.filter(inquiry=inquiry).count(), before_count)
+
+        # 3. Switching to inactive category -> 422
+        res_bad_cat = self.client.patch(
+            url,
+            {"category": self.inactive_category.pk},
+            format="json",
+        )
+        self.assertEqual(res_bad_cat.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        # 4. Existing inactive category can still be kept on PUT
+        legacy_inquiry = self._create_inquiry(
+            full_name="Legacy",
+            assignee=self.other_agent,
+            category=self.inactive_category,
+        )
+        res_legacy_put = self.client.put(
+            f"/api/v1/admin/inquiries/{legacy_inquiry.pk}/",
+            {
+                "full_name": "Legacy Updated",
+                "phone_number": "+998901234567",
+                "category": self.inactive_category.pk,
+            },
+            format="json",
+        )
+        self.assertEqual(res_legacy_put.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_legacy_put.data["full_name"], "Legacy Updated")
+
+        # 5. Blank full_name -> 422, missing inquiry -> 404
+        res_blank = self.client.patch(url, {"full_name": "   "}, format="json")
+        self.assertEqual(res_blank.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        res_missing = self.client.patch(
+            f"/api/v1/admin/inquiries/{uuid.uuid4()}/",
+            {"full_name": "Nobody"},
+            format="json",
+        )
+        self.assertEqual(res_missing.status_code, status.HTTP_404_NOT_FOUND)
