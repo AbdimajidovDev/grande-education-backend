@@ -88,3 +88,13 @@ class CanViewInquiryActivity(BasePermission):
             request.user,
             "inquiries.view_inquiry_activity",
         )
+
+
+class CanDeleteInquiry(BasePermission):
+    message = "Arizani o'chirish uchun ruxsatingiz mavjud emas."
+
+    def has_permission(self, request, view):
+        return _has_inquiry_permission(
+            request.user,
+            "inquiries.delete_inquiry",
+        )

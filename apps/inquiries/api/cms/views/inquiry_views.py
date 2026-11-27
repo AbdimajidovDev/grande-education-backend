@@ -1,10 +1,17 @@
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.http import Http404
 from rest_framework import status
-from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
+from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+from rest_framework.generics import (
+    ListAPIView,
+    ListCreateAPIView,
+    RetrieveDestroyAPIView,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 
 from apps.inquiries.api.cms.serializers import (
     AdminInquiryCreateSerializer,
@@ -22,6 +29,7 @@ from apps.inquiries.api.permissions import (
     CanAssignInquiry,
     CanChangeInquiry,
     CanChangeInquiryStatus,
+    CanDeleteInquiry,
     CanViewAllInquiries,
     CanViewInquiries,
     CanViewInquiryActivity,
@@ -35,9 +43,22 @@ from apps.inquiries.services.inquiry_service import (
     add_inquiry_comment,
     assign_inquiry,
     create_admin_inquiry,
+    delete_inquiry,
     update_inquiry_status,
 )
 from apps.rbac.services.role_service import RoleService
+
+
+def _get_inquiry_assignee_scope(user):
+    """Barcha arizalarni ko'rish huquqi bo'lmagan xodim uchun assignee scope qaytaradi."""
+    if user.is_superuser:
+        return None
+
+    permissions = RoleService._get_actor_role_permissions(user)
+    if "inquiries.view_all_inquiries" in permissions:
+        return None
+
+    return user.pk
 
 
 
@@ -125,20 +146,40 @@ InquiryListAPIView = InquiryListCreateAPIView
         tags=["Admin - Inquiries"],
         summary="Ariza tafsilotlari",
         responses={200: InquiryDetailSerializer},
-    )
+    ),
+    delete=extend_schema(
+        tags=["Admin - Inquiries"],
+        summary="Arizani o'chirish",
+        description=(
+            "Arizani va unga bog'liq harakatlar tarixini o'chiradi. "
+            "Talab qilinadigan permission: inquiries.delete_inquiry. "
+            "inquiries.view_all_inquiries huquqi bo'lmagan xodim faqat "
+            "o'ziga biriktirilgan arizani o'chira oladi."
+        ),
+        responses={
+            204: OpenApiResponse(description="Ariza muvaffaqiyatli o'chirildi."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Insufficient permissions."),
+            404: OpenApiResponse(description="Inquiry not found."),
+        },
+    ),
 )
-class InquiryDetailAPIView(RetrieveAPIView):
+class InquiryDetailAPIView(RetrieveDestroyAPIView):
     serializer_class = InquiryDetailSerializer
-    permission_classes = [IsAuthenticated, CanViewInquiries | CanViewAllInquiries]
     lookup_field = "pk"
 
-    def get_object(self):
-        user = self.request.user
-        permissions = RoleService._get_actor_role_permissions(user)
+    def get_permissions(self):
+        if self.request.method == "DELETE":
+            permission_classes = [IsAuthenticated, CanDeleteInquiry]
+        else:
+            permission_classes = [
+                IsAuthenticated,
+                CanViewInquiries | CanViewAllInquiries,
+            ]
+        return [permission() for permission in permission_classes]
 
-        assignee_id = None
-        if not user.is_superuser and "inquiries.view_all_inquiries" not in permissions:
-            assignee_id = user.pk
+    def get_object(self):
+        assignee_id = _get_inquiry_assignee_scope(self.request.user)
 
         inquiry = get_inquiry_by_id(
             inquiry_id=self.kwargs["pk"],
@@ -146,11 +187,19 @@ class InquiryDetailAPIView(RetrieveAPIView):
         )
 
         if inquiry is None:
-            from django.http import Http404
             raise Http404
 
         self.check_object_permissions(self.request, inquiry)
         return inquiry
+
+    def perform_destroy(self, instance):
+        try:
+            delete_inquiry(
+                inquiry_id=instance.pk,
+                actor=self.request.user,
+            )
+        except DjangoPermissionDenied as exc:
+            raise DRFPermissionDenied(str(exc)) from exc
 
 
 

@@ -255,3 +255,20 @@ def add_inquiry_comment(
         action=InquiryActivity.Action.COMMENT,
         note=note,
     )
+
+
+@transaction.atomic
+def delete_inquiry(
+    *,
+    inquiry_id,
+    actor,
+) -> None:
+    """Arizani va uning kaskad faoliyat tarixini o'chiradi."""
+
+    _ensure_inquiry_permission(actor, "inquiries.delete_inquiry")
+
+    inquiry = get_object_or_404(
+        Inquiry.objects.select_for_update(),
+        pk=inquiry_id,
+    )
+    inquiry.delete()

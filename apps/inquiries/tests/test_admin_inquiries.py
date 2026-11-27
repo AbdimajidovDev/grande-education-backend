@@ -201,3 +201,119 @@ class AdminInquiryCreateTests(TestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.data["data"]["status"], Inquiry.Status.NEW)
+
+
+class AdminInquiryDeleteTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.superuser = User.objects.create_superuser(
+            username="inq_del_super",
+            email="inq_del_super@example.com",
+            password="Password123!",
+        )
+        cls.viewer_only = cls._make_user("inq_del_viewer", "view_inquiry", "view_all_inquiries")
+        cls.scoped_deleter = cls._make_user("inq_del_scoped", "view_inquiry", "delete_inquiry")
+        cls.other_agent = cls._make_user("inq_del_other", "view_inquiry")
+        cls.full_deleter = cls._make_user(
+            "inq_del_full",
+            "view_inquiry",
+            "view_all_inquiries",
+            "delete_inquiry",
+        )
+        cls.category = InquiryCategory.objects.create(slug="del-cat", is_active=True)
+
+    @staticmethod
+    def _make_user(username, *codenames):
+        user = User.objects.create_user(
+            username=username,
+            email=f"{username}@example.com",
+            password="Password123!",
+        )
+        if codenames:
+            group = Group.objects.create(name=f"Group_{username}")
+            perms = Permission.objects.filter(
+                content_type__app_label="inquiries",
+                codename__in=codenames,
+            )
+            group.permissions.add(*perms)
+            user.groups.add(group)
+        return user
+
+    def _create_inquiry(self, *, full_name="Lead User", assignee=None):
+        inquiry = Inquiry.objects.create(
+            category=self.category,
+            full_name=full_name,
+            phone_number="+998901234567",
+            contact_method=Inquiry.ContactMethod.PHONE,
+            consent_accepted=True,
+            consent_version="admin-manual",
+            idempotency_key=uuid.uuid4(),
+            assignee=assignee,
+        )
+        InquiryActivity.objects.create(
+            inquiry=inquiry,
+            actor=self.superuser,
+            action=InquiryActivity.Action.CREATED,
+            note="Test lead yaratildi.",
+        )
+        return inquiry
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_auth_and_rbac_for_delete_inquiry(self):
+        inquiry = self._create_inquiry(assignee=self.scoped_deleter)
+        url = f"/api/v1/admin/inquiries/{inquiry.pk}/"
+
+        # 1. Unauthenticated -> 401
+        res_anon = self.client.delete(url)
+        self.assertEqual(res_anon.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # 2. Viewer without delete_inquiry -> 403
+        self.client.force_authenticate(user=self.viewer_only)
+        res_forbidden = self.client.delete(url)
+        self.assertEqual(res_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Inquiry.objects.filter(pk=inquiry.pk).exists())
+
+        # 3. Scoped deleter can delete own assigned inquiry -> 204 and cascades activities
+        self.client.force_authenticate(user=self.scoped_deleter)
+        res_ok = self.client.delete(url)
+        self.assertEqual(res_ok.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Inquiry.objects.filter(pk=inquiry.pk).exists())
+        self.assertFalse(InquiryActivity.objects.filter(inquiry_id=inquiry.pk).exists())
+
+    def test_scoped_deleter_cannot_delete_unassigned_or_other_inquiry(self):
+        other_inquiry = self._create_inquiry(full_name="Other Lead", assignee=self.other_agent)
+        unassigned_inquiry = self._create_inquiry(full_name="Unassigned Lead", assignee=None)
+
+        self.client.force_authenticate(user=self.scoped_deleter)
+
+        res_other = self.client.delete(f"/api/v1/admin/inquiries/{other_inquiry.pk}/")
+        self.assertEqual(res_other.status_code, status.HTTP_404_NOT_FOUND)
+
+        res_unassigned = self.client.delete(f"/api/v1/admin/inquiries/{unassigned_inquiry.pk}/")
+        self.assertEqual(res_unassigned.status_code, status.HTTP_404_NOT_FOUND)
+
+        self.assertTrue(Inquiry.objects.filter(pk=other_inquiry.pk).exists())
+        self.assertTrue(Inquiry.objects.filter(pk=unassigned_inquiry.pk).exists())
+
+    def test_full_deleter_and_not_found_and_admission_set_null(self):
+        from apps.admissions.models import Admission
+
+        other_inquiry = self._create_inquiry(full_name="Linked Lead", assignee=self.other_agent)
+        admission = Admission.objects.create(
+            inquiry=other_inquiry,
+            full_name="Linked Lead",
+            phone_number="+998901234567",
+        )
+
+        self.client.force_authenticate(user=self.full_deleter)
+        res_ok = self.client.delete(f"/api/v1/admin/inquiries/{other_inquiry.pk}/")
+        self.assertEqual(res_ok.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Inquiry.objects.filter(pk=other_inquiry.pk).exists())
+
+        admission.refresh_from_db()
+        self.assertIsNone(admission.inquiry)
+
+        res_missing = self.client.delete(f"/api/v1/admin/inquiries/{uuid.uuid4()}/")
+        self.assertEqual(res_missing.status_code, status.HTTP_404_NOT_FOUND)
