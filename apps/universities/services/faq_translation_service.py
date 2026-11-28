@@ -6,6 +6,7 @@ from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 
 from apps.rbac.services.role_service import RoleService
+from apps.notifications.services import event_notifications
 from apps.universities.constants import SUPPORTED_LANGUAGES
 from apps.universities.models import (
     FAQ,
@@ -369,6 +370,12 @@ class FAQTranslationService:
             ]
         )
 
+        event_notifications.notify_revision_submitted(
+            kind=event_notifications.REVISION_FAQ,
+            revision=revision,
+            actor=actor,
+        )
+
         return revision
 
     @staticmethod
@@ -408,6 +415,12 @@ class FAQTranslationService:
                 "approved_at",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_approved(
+            kind=event_notifications.REVISION_FAQ,
+            revision=revision,
+            actor=actor,
         )
 
         return revision
@@ -456,6 +469,13 @@ class FAQTranslationService:
                 "approved_at",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_rejected(
+            kind=event_notifications.REVISION_FAQ,
+            revision=revision,
+            actor=actor,
+            reason=reason,
         )
 
         return revision
@@ -532,6 +552,12 @@ class FAQTranslationService:
                 "published_revision",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_published(
+            kind=event_notifications.REVISION_FAQ,
+            revision=revision,
+            actor=actor,
         )
 
         return revision

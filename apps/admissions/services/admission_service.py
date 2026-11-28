@@ -1,7 +1,9 @@
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 
 from apps.admissions.models import Admission, AdmissionActivity
+from apps.notifications.services import event_notifications
 from django.db import models
 
 @transaction.atomic
@@ -22,6 +24,8 @@ def create_admission(
         action=AdmissionActivity.Action.CREATED,
         new_value=admission.stage,
     )
+
+    event_notifications.notify_admission_created(admission=admission, actor=actor)
 
     return admission
 
@@ -95,6 +99,77 @@ def update_admission(
 
 
 
+# Qabul jarayonining standart ketma-ketligi (Admission.Stage tartibi).
+STAGE_PIPELINE = (
+    Admission.Stage.CONSULTATION,
+    Admission.Stage.SELECTION,
+    Admission.Stage.EXAMS,
+    Admission.Stage.DOCUMENTS,
+    Admission.Stage.ARRIVAL,
+)
+
+
+def validate_stage_transition(
+    *,
+    current_stage: str,
+    new_stage: str,
+    can_override: bool = False,
+    note: str = "",
+) -> None:
+    """Admission bosqichi o'tishini tekshiradi.
+
+    * O'sha bosqichga "o'tish" — no-op (xato emas).
+    * Standart o'tish — keyingi bosqichga bitta qadam.
+    * Har qanday faol bosqichdan CANCELLED ga o'tish (cancel_admission) ruxsat.
+    * CANCELLED dan chiqish faqat restore_admission orqali.
+    * Nostandart o'tish (bosqich tashlab o'tish yoki orqaga qaytish) faqat
+      ``admissions.override_admission_stage_transition`` huquqi bilan
+      (``can_override=True``) va sabab (note) ko'rsatilganda.
+
+    OCHIQ BIZNES QARORI — ARRIVAL → CANCELLED:
+        Hozir ARRIVAL (yakuniy) bosqichdan ham CANCELLED ga o'tishga ruxsat
+        bor, chunki mavjud ``cancel_admission`` hech qanday bosqich cheklovini
+        qo'ymagan. Bu biznes tomonidan tasdiqlanmagan; o'zgartirish faqat
+        biznes qarori bilan (masalan, ARRIVAL'dan bekor qilishni taqiqlash
+        yoki override talab qilish) va tegishli test bilan amalga oshirilsin.
+        Batafsil: docs/admission-stage-rules.md.
+    """
+
+    if new_stage not in Admission.Stage.values:
+        raise ValueError("Noto'g'ri Admission bosqichi.")
+
+    if current_stage == new_stage:
+        return
+
+    if current_stage == Admission.Stage.CANCELLED:
+        raise ValueError(
+            "Bekor qilingan Admission faqat tiklash (restore) orqali qayta faollashtiriladi."
+        )
+
+    if current_stage not in STAGE_PIPELINE:
+        raise ValueError("Admissionning joriy bosqichi noto'g'ri.")
+
+    if new_stage == Admission.Stage.CANCELLED:
+        return
+
+    current_index = STAGE_PIPELINE.index(current_stage)
+    new_index = STAGE_PIPELINE.index(new_stage)
+
+    if new_index == current_index + 1:
+        return
+
+    if not can_override:
+        raise PermissionDenied(
+            "Bosqichlarni tashlab o'tish yoki orqaga qaytarish uchun "
+            "maxsus ruxsat talab qilinadi."
+        )
+
+    if not (note or "").strip():
+        raise ValueError(
+            "Nostandart bosqich o'tishi uchun sabab (izoh) ko'rsatilishi shart."
+        )
+
+
 @transaction.atomic
 def update_admission_stage(
     *,
@@ -139,6 +214,12 @@ def update_admission_stage(
         note=note.strip(),
     )
 
+    event_notifications.notify_admission_stage_changed(
+        admission=admission,
+        actor=actor,
+        old_stage=old_stage,
+    )
+
     return admission
 
 
@@ -174,6 +255,7 @@ def assign_admission_curator(
     if old_curator_id == new_curator_id:
         return admission
 
+    previous_curator = admission.curator
     admission.curator = curator
     admission.save(update_fields=["curator", "updated_at"])
 
@@ -184,6 +266,12 @@ def assign_admission_curator(
         old_value=old_curator_id,
         new_value=new_curator_id,
         note=note,
+    )
+
+    event_notifications.notify_admission_curator_changed(
+        admission=admission,
+        actor=actor,
+        previous_curator=previous_curator,
     )
 
     return admission
@@ -226,12 +314,20 @@ def add_admission_comment(
         pk=admission_id,
     )
 
-    return AdmissionActivity.objects.create(
+    activity = AdmissionActivity.objects.create(
         admission=admission,
         actor=actor,
         action=AdmissionActivity.Action.COMMENT,
         note=note.strip(),
     )
+
+    event_notifications.notify_admission_comment_added(
+        admission=admission,
+        actor=actor,
+        note=note,
+    )
+
+    return activity
 
 
 
@@ -294,6 +390,8 @@ def restore_admission(
         new_value=previous_stage,
         note=note or "Admission qayta faollashtirildi.",
     )
+
+    event_notifications.notify_admission_restored(admission=admission, actor=actor)
 
     return admission
 

@@ -4,6 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from apps.users.services.exceptions import EmployeeNotFoundError
+from apps.notifications.realtime import terminate_user_sessions
 from apps.rbac.services.role_service import RoleService
 
 User = get_user_model()
@@ -320,6 +321,9 @@ class EmployeeService:
 
         employee.is_active = False
         employee.save(update_fields=["is_active"])
+
+        # Ochiq WebSocket ulanishlari commitdan keyin yopiladi.
+        terminate_user_sessions(user_id=employee.pk)
 
         return employee
 

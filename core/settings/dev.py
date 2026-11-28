@@ -17,6 +17,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+WEBSOCKET_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS
 
 
 # Database
@@ -37,12 +38,9 @@ FRONTEND_URL = config(
     default="http://localhost:3000",
 )
 
-# # Lokal muhitda Redis talab qilinmasin — WS bildirishnomalar InMemory qatlamda ishlaydi
-# CHANNEL_LAYERS = {
-#     "default": {
-#         "BACKEND": "channels.layers.InMemoryChannelLayer",  # dev
-#     }
-# }
+# CHANNEL_LAYERS base.py'da Redis orqali sozlangan. Dev'da ham Redis
+# ishlatiladi: InMemoryChannelLayer jarayonlar (runserver/celery) o'rtasida
+# xabar uzatmaydi.
 
 AUTH_COOKIE_SECURE = False
 AUTH_COOKIE_SAMESITE = "Lax"

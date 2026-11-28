@@ -1,5 +1,6 @@
 THIRD_PARTY_APPS = [
     "corsheaders",
+    "channels",
     "rest_framework",
     "drf_spectacular",
     'rest_framework_simplejwt',
@@ -7,6 +8,9 @@ THIRD_PARTY_APPS = [
 ]
 
 DEFAULT_APPS = [
+    # daphne staticfiles'dan oldin turishi kerak: `runserver` ASGI (HTTP + WS)
+    # rejimida ishlaydi. Production'da HTTP baribir gunicorn orqali.
+    'daphne',
     'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -30,4 +34,5 @@ LOCAL_APPS = [
     "apps.education_content",
     "apps.admissions.apps.AdmissionsConfig",
     "apps.dashboard",
+    "apps.notifications.apps.NotificationsConfig",
 ]

@@ -8,6 +8,8 @@ from django.db import IntegrityError, transaction
 
 from django.contrib.auth import get_user_model
 
+from apps.notifications.realtime import notify_permissions_changed
+
 User = get_user_model()
 
 
@@ -38,6 +40,14 @@ class RoleService:
         return (
                 "auth_group_name_lower_uniq" in error_message
                 or "UNIQUE constraint failed: auth_group.name" in error_message
+        )
+
+    @staticmethod
+    def _notify_role_members_permissions_changed(role) -> None:
+        """Rol permissionlari o'zgarganda uning a'zolariga WS event yuboradi."""
+
+        notify_permissions_changed(
+            user_ids=role.user_set.values_list("pk", flat=True),
         )
 
     @staticmethod
@@ -225,6 +235,7 @@ class RoleService:
 
         if actor.is_superuser:
             role.permissions.add(*permissions)
+            RoleService._notify_role_members_permissions_changed(role)
             return role
 
         if any(
@@ -253,6 +264,7 @@ class RoleService:
             )
 
         role.permissions.add(*permissions)
+        RoleService._notify_role_members_permissions_changed(role)
 
         return role
 
@@ -294,6 +306,7 @@ class RoleService:
 
         if actor.is_superuser:
             role.permissions.remove(*permissions)
+            RoleService._notify_role_members_permissions_changed(role)
             return role
 
         for permission in permissions:
@@ -322,6 +335,7 @@ class RoleService:
             )
 
         role.permissions.remove(*permissions)
+        RoleService._notify_role_members_permissions_changed(role)
 
         return role
 
@@ -345,6 +359,133 @@ class RoleService:
             raise PermissionDenied(
                 "Ushbu amalni bajarish uchun ruxsatingiz mavjud emas."
             )
+
+    @staticmethod
+    @transaction.atomic
+    def assign_employee_to_roles(
+            *,
+            role_ids: list[int],
+            employee,
+            actor,
+    ) -> list[Group]:
+        """Xodimga bir yoki bir nechta rol biriktiradi.
+
+        Qoidalar (assign_permissions va remove_employee_from_roles bilan bir xil):
+        * actor faol va superuser yoki ``users.assign_roles`` huquqiga ega;
+        * Django Admin hisoblari (is_staff / is_superuser) CMS orqali boshqarilmaydi;
+        * oddiy administrator faqat o'zida mavjud permissionlardan iborat
+          rollarni biriktira oladi;
+        * ``rbac.manage_roles`` ni o'z ichiga olgan rolni faqat superuser beradi;
+        * allaqachon biriktirilgan rol qayta qo'shilmaydi (idempotent).
+        """
+
+        # 1. Actor vakolatini tekshirish.
+        if (
+                actor is None
+                or not actor.is_authenticated
+                or not actor.is_active
+        ):
+            raise PermissionDenied(
+                "Bu amalni bajarish uchun faol foydalanuvchi bo'lishingiz kerak."
+            )
+
+        actor_permissions = (
+            set()
+            if actor.is_superuser
+            else RoleService._get_actor_role_permissions(actor)
+        )
+
+        if not actor.is_superuser and "users.assign_roles" not in actor_permissions:
+            raise PermissionDenied(
+                "Xodimlarning rollarini boshqarish huquqingiz mavjud emas."
+            )
+
+        # 2. Xodimni tekshirish.
+        if (
+                employee is None
+                or employee.pk is None
+                or employee.is_staff
+                or employee.is_superuser
+        ):
+            raise ValidationError({
+                "employee": "Bu foydalanuvchining rollarini o'zgartirib bo'lmaydi."
+            })
+
+        # 3. Takroriy ID larni tekshirish.
+        if len(role_ids) != len(set(role_ids)):
+            raise ValidationError({
+                "role_ids": "Rol ID raqamlari takrorlanmasligi kerak."
+            })
+
+        if not role_ids:
+            return []
+
+        # 4. Rollarni olish (remove bilan bir xil lock tartibi: rollar → xodim).
+        roles = list(
+            Group.objects
+            .select_for_update()
+            .filter(pk__in=role_ids)
+            .order_by("id")
+        )
+
+        if len(roles) != len(role_ids):
+            raise ValidationError({
+                "role_ids": "Ko'rsatilgan rollardan biri yoki bir nechtasi mavjud emas."
+            })
+
+        # 5. Rollar actor vakolati doirasidami.
+        if not actor.is_superuser:
+            role_permissions = {
+                f"{app_label}.{codename}"
+                for app_label, codename in (
+                    Permission.objects
+                    .filter(group__in=roles)
+                    .values_list("content_type__app_label", "codename")
+                    .distinct()
+                )
+            }
+
+            if "rbac.manage_roles" in role_permissions:
+                raise PermissionDenied(
+                    "Rollarni boshqarish huquqini beruvchi rolni faqat superuser biriktira oladi."
+                )
+
+            if not role_permissions.issubset(actor_permissions):
+                raise PermissionDenied(
+                    "Sizda mavjud bo'lmagan permissionlarga ega rolni biriktira olmaysiz."
+                )
+
+        locked_employee = (
+            User.objects
+            .select_for_update()
+            .filter(
+                pk=employee.pk,
+                is_staff=False,
+                is_superuser=False,
+            )
+            .first()
+        )
+
+        if locked_employee is None:
+            raise ValidationError({
+                "employee": "Xodim topilmadi yoki uning rollarini o'zgartirib bo'lmaydi."
+            })
+
+        # 6. Faqat hali biriktirilmagan rollarni qo'shish.
+        assigned_role_ids = set(
+            locked_employee.groups.filter(
+                pk__in=role_ids
+            ).values_list("id", flat=True)
+        )
+        new_roles = [role for role in roles if role.pk not in assigned_role_ids]
+
+        if new_roles:
+            locked_employee.groups.add(*new_roles)
+
+            # 7. Frontend huquq va menyularni qayta yuklashi uchun (commitdan keyin).
+            notify_permissions_changed(user_ids=[locked_employee.pk])
+
+        return roles
 
     @staticmethod
     @transaction.atomic
@@ -437,6 +578,9 @@ class RoleService:
 
         # 6. Rollarni olib tashlash.
         locked_employee.groups.remove(*roles)
+
+        # 7. Frontend huquq va menyularni qayta yuklashi uchun (commitdan keyin).
+        notify_permissions_changed(user_ids=[locked_employee.pk])
 
         return roles
 

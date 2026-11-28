@@ -6,6 +6,7 @@ from django.db import IntegrityError, transaction
 from rest_framework.exceptions import APIException
 
 from apps.inquiries.models import Inquiry, InquiryActivity
+from apps.notifications.services import event_notifications
 from apps.rbac.services.role_service import RoleService
 
 
@@ -77,6 +78,8 @@ def create_inquiry(validated_data):
                 note="Ariza foydalanuvchi tomonidan yuborildi.",
             )
 
+            event_notifications.notify_public_inquiry_created(inquiry=inquiry)
+
             return inquiry, True
 
     except IntegrityError:
@@ -144,6 +147,9 @@ def create_admin_inquiry(*, validated_data: dict, actor) -> Inquiry:
         note=activity_note,
     )
 
+    if inquiry.assignee_id is not None:
+        event_notifications.notify_inquiry_assigned(inquiry=inquiry, actor=actor)
+
     return inquiry
 
 
@@ -185,6 +191,12 @@ def update_inquiry_status(
         actor=actor,
         action=InquiryActivity.Action.STATUS_CHANGED,
         note=activity_note,
+    )
+
+    event_notifications.notify_inquiry_status_changed(
+        inquiry=inquiry,
+        actor=actor,
+        old_status=old_status,
     )
 
     return inquiry
@@ -234,6 +246,12 @@ def assign_inquiry(
         note=action_note,
     )
 
+    event_notifications.notify_inquiry_assigned(
+        inquiry=inquiry,
+        actor=actor,
+        previous_assignee=previous_assignee,
+    )
+
     return inquiry
 
 
@@ -249,12 +267,20 @@ def add_inquiry_comment(
         pk=inquiry_id,
     )
 
-    return InquiryActivity.objects.create(
+    activity = InquiryActivity.objects.create(
         inquiry=inquiry,
         actor=actor,
         action=InquiryActivity.Action.COMMENT,
         note=note,
     )
+
+    event_notifications.notify_inquiry_comment_added(
+        inquiry=inquiry,
+        actor=actor,
+        note=note,
+    )
+
+    return activity
 
 
 @transaction.atomic
@@ -284,8 +310,10 @@ def update_inquiry(
             "Status, assignee va tizim maydonlari bu funksiya orqali o'zgartirilmaydi."
         )
 
+    # PostgreSQL nullable LEFT JOIN (university, assignee) ustida FOR UPDATE
+    # qo'yishga ruxsat bermaydi — faqat Inquiry qatorining o'zi lock qilinadi.
     inquiry = get_object_or_404(
-        Inquiry.objects.select_for_update().select_related(
+        Inquiry.objects.select_for_update(of=("self",)).select_related(
             "category",
             "university",
             "assignee",
@@ -318,6 +346,12 @@ def update_inquiry(
             actor=actor,
             action=InquiryActivity.Action.DETAILS_UPDATED,
             note=activity_note,
+        )
+
+        event_notifications.notify_inquiry_updated(
+            inquiry=inquiry,
+            actor=actor,
+            changed_fields=changed_fields,
         )
 
     return inquiry

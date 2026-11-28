@@ -7,6 +7,7 @@ from django.db.models.deletion import ProtectedError
 
 from django.utils import timezone
 from apps.rbac.services.role_service import RoleService
+from apps.notifications.services import event_notifications
 
 from apps.universities.models import (
     University,
@@ -332,6 +333,12 @@ class UniversityRevisionService:
             ]
         )
 
+        event_notifications.notify_revision_submitted(
+            kind=event_notifications.REVISION_UNIVERSITY,
+            revision=revision,
+            actor=actor,
+        )
+
         return revision
 
     @staticmethod
@@ -363,6 +370,12 @@ class UniversityRevisionService:
                 "approved_at",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_approved(
+            kind=event_notifications.REVISION_UNIVERSITY,
+            revision=revision,
+            actor=actor,
         )
 
         return revision
@@ -409,6 +422,13 @@ class UniversityRevisionService:
                 "approved_at",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_rejected(
+            kind=event_notifications.REVISION_UNIVERSITY,
+            revision=revision,
+            actor=actor,
+            reason=reason,
         )
 
         return revision
@@ -539,6 +559,12 @@ class UniversityRevisionService:
                 "updated_by",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_published(
+            kind=event_notifications.REVISION_UNIVERSITY,
+            revision=revision,
+            actor=actor,
         )
 
         return revision

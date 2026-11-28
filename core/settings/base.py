@@ -67,6 +67,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
+ASGI_APPLICATION = 'core.asgi.application'
 
 # ===============================================================================================
 # ----- CORS ----
@@ -199,3 +200,30 @@ CELERY_BEAT_SCHEDULE = {
         "options": {"expires": 60 * 14},
     },
 }
+
+# ===============    Channels (WebSocket)   ========================
+# Redis channel layer: cache (db 1) va Celery (db 2) dan alohida db.
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                config("CHANNEL_LAYER_REDIS_URL", default="redis://127.0.0.1:6379/3"),
+            ],
+            "prefix": "cu_grande:channels",
+            "capacity": 1000,
+            "expiry": 60,
+        },
+    },
+}
+
+# WebSocket handshake'da CSRF ishlamaydi, shuning uchun Origin header
+# majburiy tekshiriladi. "*" ishlatmang. Bo'sh ro'yxat = hamma rad etiladi.
+WEBSOCKET_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in config(
+        "WEBSOCKET_ALLOWED_ORIGINS",
+        default=config("CORS_ALLOWED_ORIGINS", default=""),
+    ).split(",")
+    if origin.strip()
+]

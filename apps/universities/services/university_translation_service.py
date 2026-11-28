@@ -3,6 +3,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
 from apps.rbac.services.role_service import RoleService
+from apps.notifications.services import event_notifications
 from apps.universities.models import (
     University,
     UniversityAuditLog,
@@ -557,6 +558,12 @@ class UniversityTranslationService:
             ]
         )
 
+        event_notifications.notify_revision_submitted(
+            kind=event_notifications.REVISION_UNIVERSITY_TRANSLATION,
+            revision=revision,
+            actor=actor,
+        )
+
         return revision
 
     @staticmethod
@@ -597,6 +604,12 @@ class UniversityTranslationService:
                 "approved_at",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_approved(
+            kind=event_notifications.REVISION_UNIVERSITY_TRANSLATION,
+            revision=revision,
+            actor=actor,
         )
 
         return revision
@@ -646,6 +659,13 @@ class UniversityTranslationService:
                 "approved_at",
                 "updated_at",
             ]
+        )
+
+        event_notifications.notify_revision_rejected(
+            kind=event_notifications.REVISION_UNIVERSITY_TRANSLATION,
+            revision=revision,
+            actor=actor,
+            reason=reason,
         )
 
         return revision
@@ -756,6 +776,12 @@ class UniversityTranslationService:
                     "allaqachon band."
                 )
             }) from exc
+
+        event_notifications.notify_revision_published(
+            kind=event_notifications.REVISION_UNIVERSITY_TRANSLATION,
+            revision=revision,
+            actor=actor,
+        )
 
         return revision
 

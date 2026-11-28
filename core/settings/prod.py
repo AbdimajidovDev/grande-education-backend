@@ -79,11 +79,8 @@ FRONTEND_URL = config("FRONTEND_URL")
 #
 # BASE_URL = "https://smart-city-qarshi.uz"
 
-# CHANNEL_LAYERS = {
-#     "default": {
-#         "BACKEND": "channels_redis.core.RedisChannelLayer"
-#     }
-# }
+# CHANNEL_LAYERS (Redis) base.py'da. Prod'da CHANNEL_LAYER_REDIS_URL va
+# WEBSOCKET_ALLOWED_ORIGINS env orqali beriladi (docs/notifications.md).
 
 
 # ======================== Email Settings ========================
